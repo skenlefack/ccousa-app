@@ -1,0 +1,460 @@
+# =====================================================
+# CCOUSA-APP - Docker Compose Configuration
+# Version 1.0 - Janvier 2025
+# Plateforme de gestion des événements de santé animale
+# =====================================================
+
+services:
+  # ============================================
+  # BASE DE DONNÉES PostgreSQL
+  # ============================================
+  postgres:
+    image: postgres:15-alpine
+    container_name: ccousa-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${DB_NAME:-ccousa_db}
+      POSTGRES_USER: ${DB_USER:-ccousa_user}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-ccousa_password_2025}
+      PGDATA: /var/lib/postgresql/data/pgdata
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./docker/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    ports:
+      - "5433:5432"
+    networks:
+      - ccousa_network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-ccousa_user} -d ${DB_NAME:-ccousa_db}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  # ============================================
+  # CACHE Redis
+  # ============================================
+  redis:
+    image: redis:7-alpine
+    container_name: ccousa-redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD:-redis_password_2025}
+    volumes:
+      - redis_data:/data
+    ports:
+      - "6379:6379"
+    networks:
+      - ccousa_network
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-redis_password_2025}", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ============================================
+  # MESSAGE QUEUE RabbitMQ
+  # ============================================
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    container_name: ccousa-rabbitmq
+    restart: unless-stopped
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-admin}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-rabbitmq_password_2025}
+      RABBITMQ_DEFAULT_VHOST: ccousa
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    networks:
+      - ccousa_network
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  # ============================================
+  # API GATEWAY
+  # ============================================
+  api-gateway:
+    build:
+      context: ./ccousa-services/api-gateway
+      dockerfile: Dockerfile
+    container_name: ccousa-api-gateway
+    restart: unless-stopped
+    environment:
+      NODE_ENV: ${NODE_ENV:-development}
+      PORT: 8000
+      JWT_SECRET: ${JWT_SECRET:-your_jwt_secret_key_here_minimum_32_chars}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-redis_password_2025}
+      CORS_ORIGIN: http://localhost:3010,http://localhost:3000,http://localhost:5173
+      AUTH_SERVICE_URL: http://auth-service:3001
+      USERS_SERVICE_URL: http://users-service:3002
+      EVENTS_SERVICE_URL: http://events-service:3003
+      PROCEDURES_SERVICE_URL: http://procedures-service:3004
+      KNOWLEDGE_SERVICE_URL: http://knowledge-service:3005
+      NOTIFICATIONS_SERVICE_URL: http://notifications-service:3006
+      CONFIG_SERVICE_URL: http://config-service:3007
+      FORMS_SERVICE_URL: http://forms-service:3008
+      ANALYTICS_SERVICE_URL: http://analytics-service:3009
+    ports:
+      - "8000:8000"
+    networks:
+      - ccousa_network
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  # ============================================
+  # AUTH SERVICE (Port 3001)
+  # ============================================
+  auth-service:
+    build:
+      context: ./ccousa-services/auth-service
+      dockerfile: Dockerfile
+    container_name: ccousa-auth-service
+    restart: unless-stopped
+    environment:
+      NODE_ENV: ${NODE_ENV:-development}
+      PORT: 3001
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: ${DB_NAME:-ccousa_db}
+      DB_USER: ${DB_USER:-ccousa_user}
+      DB_PASSWORD: ${DB_PASSWORD:-ccousa_password_2025}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-redis_password_2025}
+      JWT_SECRET: ${JWT_SECRET:-your_jwt_secret_key_here_minimum_32_chars}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:-your_refresh_secret_key_here}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-24h}
+      JWT_REFRESH_EXPIRES_IN: ${JWT_REFRESH_EXPIRES_IN:-7d}
+      RABBITMQ_URL: amqp://${RABBITMQ_USER:-admin}:${RABBITMQ_PASSWORD:-rabbitmq_password_2025}@rabbitmq:5672/ccousa
+    # Port exposé en interne uniquement via réseau Docker
+    networks:
+      - ccousa_network
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+
+  # ============================================
+  # USERS SERVICE (Port 3002)
+  # ============================================
+  users-service:
+    build:
+      context: ./ccousa-services/users-service
+      dockerfile: Dockerfile
+    container_name: ccousa-users-service
+    restart: unless-stopped
+    environment:
+      NODE_ENV: ${NODE_ENV:-development}
+      PORT: 3002
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: ${DB_NAME:-ccousa_db}
+      DB_USER: ${DB_USER:-ccousa_user}
+      DB_PASSWORD: ${DB_PASSWORD:-ccousa_password_2025}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-redis_password_2025}
+      RABBITMQ_URL: amqp://${RABBITMQ_USER:-admin}:${RABBITMQ_PASSWORD:-rabbitmq_password_2025}@rabbitmq:5672/ccousa
+    networks:
+      - ccousa_network
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  # ============================================
+  # EVENTS SERVICE (Port 3003)
+  # ============================================
+  events-service:
+    build:
+      context: ./ccousa-services/events-service
+      dockerfile: Dockerfile
+    container_name: ccousa-events-service
+    restart: unless-stopped
+    environment:
+      NODE_ENV: ${NODE_ENV:-development}
+      PORT: 3003
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: ${DB_NAME:-ccousa_db}
+      DB_USER: ${DB_USER:-ccousa_user}
+      DB_PASSWORD: ${DB_PASSWORD:-ccousa_password_2025}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-redis_password_2025}
+      RABBITMQ_URL: amqp://${RABBITMQ_USER:-admin}:${RABBITMQ_PASSWORD:-rabbitmq_password_2025}@rabbitmq:5672/ccousa
+    volumes:
+      - uploads_data:/app/uploads
+    networks:
+      - ccousa_network
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  # ============================================
+  # PROCEDURES SERVICE (Port 3004)
+  # ============================================
+  procedures-service:
+    build:
+      context: ./ccousa-services/procedures-service
+      dockerfile: Dockerfile
+    container_name: ccousa-procedures-service
+    restart: unless-stopped
+    environment:
+      NODE_ENV: ${NODE_ENV:-development}
+      PORT: 3004
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: ${DB_NAME:-ccousa_db}
+      DB_USER: ${DB_USER:-ccousa_user}
+      DB_PASSWORD: ${DB_PASSWORD:-ccousa_password_2025}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-redis_password_2025}
+      RABBITMQ_URL: amqp://${RABBITMQ_USER:-admin}:${RABBITMQ_PASSWORD:-rabbitmq_password_2025}@rabbitmq:5672/ccousa
+    networks:
+      - ccousa_network
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  # ============================================
+  # KNOWLEDGE SERVICE (Port 3005)
+  # ============================================
+  knowledge-service:
+    build:
+      context: ./ccousa-services/knowledge-service
+      dockerfile: Dockerfile
+    container_name: ccousa-knowledge-service
+    restart: unless-stopped
+    environment:
+      NODE_ENV: ${NODE_ENV:-development}
+      PORT: 3005
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: ${DB_NAME:-ccousa_db}
+      DB_USER: ${DB_USER:-ccousa_user}
+      DB_PASSWORD: ${DB_PASSWORD:-ccousa_password_2025}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-redis_password_2025}
+      RABBITMQ_URL: amqp://${RABBITMQ_USER:-admin}:${RABBITMQ_PASSWORD:-rabbitmq_password_2025}@rabbitmq:5672/ccousa
+    volumes:
+      - documents_data:/app/documents
+    networks:
+      - ccousa_network
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  # ============================================
+  # NOTIFICATIONS SERVICE (Port 3006)
+  # ============================================
+  notifications-service:
+    build:
+      context: ./ccousa-services/notifications-service
+      dockerfile: Dockerfile
+    container_name: ccousa-notifications-service
+    restart: unless-stopped
+    environment:
+      NODE_ENV: ${NODE_ENV:-development}
+      PORT: 3006
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: ${DB_NAME:-ccousa_db}
+      DB_USER: ${DB_USER:-ccousa_user}
+      DB_PASSWORD: ${DB_PASSWORD:-ccousa_password_2025}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-redis_password_2025}
+      RABBITMQ_URL: amqp://${RABBITMQ_USER:-admin}:${RABBITMQ_PASSWORD:-rabbitmq_password_2025}@rabbitmq:5672/ccousa
+      SMTP_HOST: ${SMTP_HOST:-smtp.example.com}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USER: ${SMTP_USER:-noreply@ccousa-app.cm}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-smtp_password}
+      SMTP_FROM_NAME: ${SMTP_FROM_NAME:-CCOUSA-APP}
+      SMTP_FROM_EMAIL: ${SMTP_FROM_EMAIL:-noreply@ccousa-app.cm}
+    networks:
+      - ccousa_network
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+
+  # ============================================
+  # CONFIG SERVICE (Port 3007)
+  # ============================================
+  config-service:
+    build:
+      context: ./ccousa-services/config-service
+      dockerfile: Dockerfile
+    container_name: ccousa-config-service
+    restart: unless-stopped
+    environment:
+      NODE_ENV: ${NODE_ENV:-development}
+      PORT: 3007
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: ${DB_NAME:-ccousa_db}
+      DB_USER: ${DB_USER:-ccousa_user}
+      DB_PASSWORD: ${DB_PASSWORD:-ccousa_password_2025}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-redis_password_2025}
+      RABBITMQ_URL: amqp://${RABBITMQ_USER:-admin}:${RABBITMQ_PASSWORD:-rabbitmq_password_2025}@rabbitmq:5672/ccousa
+    networks:
+      - ccousa_network
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  # ============================================
+  # FORMS SERVICE (Port 3008)
+  # ============================================
+  forms-service:
+    build:
+      context: ./ccousa-services/forms-service
+      dockerfile: Dockerfile
+    container_name: ccousa-forms-service
+    restart: unless-stopped
+    environment:
+      NODE_ENV: ${NODE_ENV:-development}
+      PORT: 3008
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: ${DB_NAME:-ccousa_db}
+      DB_USER: ${DB_USER:-ccousa_user}
+      DB_PASSWORD: ${DB_PASSWORD:-ccousa_password_2025}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-redis_password_2025}
+      RABBITMQ_URL: amqp://${RABBITMQ_USER:-admin}:${RABBITMQ_PASSWORD:-rabbitmq_password_2025}@rabbitmq:5672/ccousa
+    networks:
+      - ccousa_network
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  # ============================================
+  # ANALYTICS SERVICE (Port 3009)
+  # ============================================
+  analytics-service:
+    build:
+      context: ./ccousa-services/analytics-service
+      dockerfile: Dockerfile
+    container_name: ccousa-analytics-service
+    restart: unless-stopped
+    environment:
+      NODE_ENV: ${NODE_ENV:-development}
+      PORT: 3009
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: ${DB_NAME:-ccousa_db}
+      DB_USER: ${DB_USER:-ccousa_user}
+      DB_PASSWORD: ${DB_PASSWORD:-ccousa_password_2025}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-redis_password_2025}
+      RABBITMQ_URL: amqp://${RABBITMQ_USER:-admin}:${RABBITMQ_PASSWORD:-rabbitmq_password_2025}@rabbitmq:5672/ccousa
+    networks:
+      - ccousa_network
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  # ============================================
+  # FRONTEND React
+  # ============================================
+  frontend:
+    build:
+      context: ./ccousa-frontend
+      dockerfile: Dockerfile
+    container_name: ccousa-frontend
+    restart: unless-stopped
+    environment:
+      VITE_API_URL: http://localhost:8000
+      VITE_APP_NAME: CCOUSA-APP
+      VITE_DEFAULT_LANGUAGE: fr
+    ports:
+      - "3010:80"
+    networks:
+      - ccousa_network
+    depends_on:
+      - api-gateway
+
+  # ============================================
+  # NGINX Load Balancer / Reverse Proxy
+  # ============================================
+  nginx:
+    image: nginx:alpine
+    container_name: ccousa-nginx
+    restart: unless-stopped
+    volumes:
+      - ./docker/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./docker/nginx/conf.d:/etc/nginx/conf.d:ro
+    ports:
+      - "80:80"
+      - "443:443"
+    networks:
+      - ccousa_network
+    depends_on:
+      - frontend
+      - api-gateway
+
+# ============================================
+# VOLUMES
+# ============================================
+volumes:
+  postgres_data:
+    driver: local
+    name: ccousa_postgres_data
+  redis_data:
+    driver: local
+    name: ccousa_redis_data
+  rabbitmq_data:
+    driver: local
+    name: ccousa_rabbitmq_data
+  uploads_data:
+    driver: local
+    name: ccousa_uploads_data
+  documents_data:
+    driver: local
+    name: ccousa_documents_data
+
+# ============================================
+# NETWORKS
+# ============================================
+networks:
+  ccousa_network:
+    driver: bridge
+    name: ccousa_network
+    ipam:
+      config:
+        - subnet: 172.28.0.0/16
