@@ -54,6 +54,7 @@ import {
   useProcedureGroups,
 } from '../../hooks/useProcedures';
 import { useEventCategories } from '../../hooks/useSettings';
+import { useForms } from '../../hooks/useForms';
 import type { Procedure, ProcedureStep } from '../../types';
 import type { CreateProcedureData, CreateStepData } from '../../services/procedures.service';
 
@@ -247,10 +248,11 @@ const StepCard: React.FC<{
   step: StepFormData;
   index: number;
   totalSteps: number;
+  formOptions: Array<{ value: string; label: string }>;
   onUpdate: (data: Partial<StepFormData>) => void;
   onDelete: () => void;
   onDuplicate: () => void;
-}> = ({ step, index, totalSteps, onUpdate, onDelete, onDuplicate }) => {
+}> = ({ step, index, totalSteps, formOptions, onUpdate, onDelete, onDuplicate }) => {
   const assigneeConfig = assigneeTypeOptions.find((a) => a.value === step.assigneeType);
 
   return (
@@ -380,10 +382,7 @@ const StepCard: React.FC<{
                     label="Formulaire associé"
                     value={step.formId}
                     onChange={(value) => onUpdate({ formId: value })}
-                    options={[
-                      { value: '', label: 'Aucun formulaire' },
-                      // Forms would be loaded dynamically
-                    ]}
+                    options={formOptions}
                     placeholder="Sélectionner un formulaire"
                   />
                 </div>
@@ -434,6 +433,7 @@ export const ProcedureFormPage: React.FC<ProcedureFormPageProps> = ({
   });
   const { data: categories } = useEventCategories();
   const { data: groups } = useProcedureGroups();
+  const { data: formsData } = useForms({ isActive: true, isPublished: true });
   const createProcedure = useCreateProcedure();
   const updateProcedure = useUpdateProcedure();
   const bulkUpdateSteps = useBulkUpdateProcedureSteps();
@@ -613,13 +613,25 @@ export const ProcedureFormPage: React.FC<ProcedureFormPageProps> = ({
   // Options
   const categoryOptions = useMemo(() => [
     { value: '', label: 'Aucune catégorie' },
-    ...(categories || []).map((c) => ({ value: c.id, label: c.name })),
+    ...(categories || []).map((c) => ({
+      value: c.id,
+      label: c.name,
+      icon: <span className="w-3 h-3 rounded-full" style={{ backgroundColor: c.color }} />,
+    })),
   ], [categories]);
 
   const groupOptions = useMemo(() => [
     { value: '', label: 'Aucun groupe' },
     ...(groups || []).map((g) => ({ value: g.id, label: g.name })),
   ], [groups]);
+
+  const formOptions = useMemo(() => [
+    { value: '', label: 'Aucun formulaire' },
+    ...(formsData?.items || []).map((f) => ({
+      value: f.id,
+      label: `${f.name} (${f.code})`,
+    })),
+  ], [formsData]);
 
   const isSubmitting = createProcedure.isPending || updateProcedure.isPending || bulkUpdateSteps.isPending;
   const isLoading = isLoadingProcedure && isEditMode;
@@ -853,6 +865,7 @@ export const ProcedureFormPage: React.FC<ProcedureFormPageProps> = ({
                       step={step}
                       index={index}
                       totalSteps={steps.length}
+                      formOptions={formOptions}
                       onUpdate={(data) => handleUpdateStep(index, data)}
                       onDelete={() => handleDeleteStep(index)}
                       onDuplicate={() => handleDuplicateStep(index)}

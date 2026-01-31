@@ -13,9 +13,7 @@ import {
   BarChart3,
   ChevronDown,
   ChevronRight,
-  LogOut,
   HelpCircle,
-  Menu,
   X,
   Zap,
 } from 'lucide-react';
@@ -90,7 +88,10 @@ const navigationItems: NavItem[] = [
     id: 'settings',
     label: 'Paramètres',
     icon: <Settings className="w-5 h-5" />,
-    path: '/settings',
+    children: [
+      { id: 'settings-general', label: 'Général', icon: <Settings className="w-4 h-4" />, path: '/settings' },
+      { id: 'settings-procedure-groups', label: 'Groupes de procédures', icon: <ClipboardList className="w-4 h-4" />, path: '/settings/procedure-groups' },
+    ],
   },
 ];
 

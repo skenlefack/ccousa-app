@@ -305,7 +305,11 @@ const ProcedureCard: React.FC<{
 // Main Component
 // ===========================================
 
-export const ProceduresListPage: React.FC = () => {
+interface ProceduresListPageProps {
+  onNavigate?: (path: string) => void;
+}
+
+export const ProceduresListPage: React.FC<ProceduresListPageProps> = ({ onNavigate }) => {
   // State
   const [viewMode, setViewMode] = useState<ViewMode>('grid');
   const [filters, setFilters] = useState<ProcedureFiltersState>(defaultFilters);
@@ -369,11 +373,11 @@ export const ProceduresListPage: React.FC = () => {
     filters.showInactive;
 
   const handleView = (procedure: Procedure) => {
-    console.log('View procedure:', procedure.id);
+    onNavigate?.(`/procedures/${procedure.id}`);
   };
 
   const handleEdit = (procedure: Procedure) => {
-    console.log('Edit procedure:', procedure.id);
+    onNavigate?.(`/procedures/${procedure.id}/edit`);
   };
 
   const handleDeleteClick = (procedure: Procedure) => {
@@ -617,7 +621,7 @@ export const ProceduresListPage: React.FC = () => {
             <Download className="w-4 h-4 mr-2" />
             Exporter
           </Button>
-          <Button onClick={() => console.log('Create new procedure')}>
+          <Button onClick={() => onNavigate?.('/procedures/new')}>
             <Plus className="w-4 h-4 mr-2" />
             Nouvelle procédure
           </Button>
@@ -764,7 +768,7 @@ export const ProceduresListPage: React.FC = () => {
           <NoResultsEmpty onReset={clearFilters} />
         ) : (
           <NoDataEmpty
-            onAdd={() => console.log('Create procedure')}
+            onAdd={() => onNavigate?.('/procedures/new')}
             addLabel="Créer une procédure"
           />
         )

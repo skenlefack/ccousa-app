@@ -18,6 +18,7 @@ import { MainLayout } from './components/layout';
 import { ToastProvider } from './components/ui';
 import { DashboardPage } from './pages/dashboard';
 import { SettingsPage } from './pages/settings/SettingsPage';
+import { ProcedureGroupsPage } from './pages/settings';
 import { EventsListPage, EventDetailPage, EventFormPage } from './pages/events';
 import { ProceduresListPage, ProcedureDetailPage, ProcedureFormPage } from './pages/procedures';
 import { FormsListPage, FormBuilderPage, FormPreviewPage } from './pages/forms';
@@ -60,6 +61,7 @@ type Route =
   | 'users-groups'
   | 'users-roles'
   | 'settings'
+  | 'settings-procedure-groups'
   | 'knowledge'
   | 'knowledge-new'
   | 'knowledge-detail'
@@ -88,6 +90,7 @@ const pageTitles: Record<Route, string> = {
   'users-groups': 'Groupes',
   'users-roles': 'Rôles & Permissions',
   settings: 'Paramètres',
+  'settings-procedure-groups': 'Groupes de procédures',
   knowledge: 'Base de connaissances',
   'knowledge-new': 'Nouvel article',
   'knowledge-detail': 'Article',
@@ -97,38 +100,6 @@ const pageTitles: Record<Route, string> = {
   notifications: 'Notifications',
   'notifications-preferences': 'Preferences notifications',
 };
-
-// Placeholder component for pages not yet migrated
-const PlaceholderPage: React.FC<{ title: string; description?: string }> = ({
-  title,
-  description = 'Cette page sera disponible prochainement.'
-}) => (
-  <div className="flex flex-col items-center justify-center min-h-[60vh]">
-    <div className="p-8 rounded-2xl bg-white dark:bg-dark-800 shadow-lg border border-dark-200 dark:border-dark-700 text-center max-w-md">
-      <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-primary-100 dark:bg-primary-900/30 flex items-center justify-center">
-        <svg
-          className="w-8 h-8 text-primary-600 dark:text-primary-400"
-          fill="none"
-          viewBox="0 0 24 24"
-          stroke="currentColor"
-        >
-          <path
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            strokeWidth={2}
-            d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"
-          />
-        </svg>
-      </div>
-      <h2 className="text-2xl font-bold text-dark-900 dark:text-white mb-2">
-        {title}
-      </h2>
-      <p className="text-dark-500 dark:text-dark-400">
-        {description}
-      </p>
-    </div>
-  </div>
-);
 
 // Main App Component
 function AppModern() {
@@ -254,29 +225,23 @@ function AppModern() {
 
   // Event-specific navigation handlers
   const handleEventBack = () => handleNavigate('/events');
-  const handleEventCreate = () => handleNavigate('/events/new');
   const handleEventView = (id: string) => handleNavigate(`/events/${id}`);
   const handleEventEdit = (id: string) => handleNavigate(`/events/${id}/edit`);
   const handleEventSuccess = (event: Event) => handleNavigate(`/events/${event.id}`);
 
   // Procedure-specific navigation handlers
   const handleProcedureBack = () => handleNavigate('/procedures');
-  const handleProcedureCreate = () => handleNavigate('/procedures/new');
   const handleProcedureView = (id: string) => handleNavigate(`/procedures/${id}`);
   const handleProcedureEdit = (id: string) => handleNavigate(`/procedures/${id}/edit`);
   const handleProcedureSuccess = (procedure: Procedure) => handleNavigate(`/procedures/${procedure.id}`);
 
   // Form-specific navigation handlers
   const handleFormBack = () => handleNavigate('/forms');
-  const handleFormCreate = () => handleNavigate('/forms/new');
-  const handleFormView = (id: string) => handleNavigate(`/forms/${id}`);
   const handleFormEdit = (id: string) => handleNavigate(`/forms/${id}/edit`);
-  const handleFormPreview = (id: string) => handleNavigate(`/forms/${id}/preview`);
   const handleFormSuccess = (form: Form) => handleNavigate(`/forms/${form.id}`);
 
   // Article-specific navigation handlers
   const handleArticleBack = () => handleNavigate('/knowledge');
-  const handleArticleCreate = () => handleNavigate('/knowledge/new');
   const handleArticleView = (id: string) => handleNavigate(`/knowledge/${id}`);
   const handleArticleEdit = (id: string) => handleNavigate(`/knowledge/${id}/edit`);
   const handleArticleSuccess = (article: Article) => handleNavigate(`/knowledge/${article.id}`);
@@ -318,7 +283,7 @@ function AppModern() {
           <EventsListPage />
         );
       case 'procedures':
-        return <ProceduresListPage />;
+        return <ProceduresListPage onNavigate={handleNavigate} />;
       case 'procedures-new':
         return (
           <ProcedureFormPage
@@ -381,6 +346,8 @@ function AppModern() {
         return <GroupsPage />;
       case 'users-roles':
         return <RolesPermissionsPage />;
+      case 'settings-procedure-groups':
+        return <ProcedureGroupsPage />;
       case 'knowledge':
         return <KnowledgeListPage onNavigate={handleNavigate} />;
       case 'knowledge-new':
