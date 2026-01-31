@@ -5936,6 +5936,750 @@ function FormBuilderPage() {
 }
 
 /* ============================================
+   PROCEDURES PAGE
+   ============================================ */
+interface Procedure {
+  id: string
+  code: string
+  name: string
+  description?: string
+  type: 'INVESTIGATION' | 'VACCINATION' | 'INSPECTION' | 'SAMPLING' | 'TREATMENT' | 'OTHER'
+  triggerType: 'MANUAL' | 'AUTOMATIC' | 'SCHEDULED'
+  isActive: boolean
+  categoryId?: string
+  category?: { id: string; name: string; color: string }
+  steps?: ProcedureStepData[]
+  createdAt: string
+  updatedAt: string
+}
+
+interface ProcedureStepData {
+  id?: string
+  name: string
+  description?: string
+  stepNumber: number
+  durationHours?: number
+  isOptional: boolean
+  assigneeType: 'USER' | 'ROLE' | 'GROUP' | 'UNIT'
+  assigneeId?: string
+  formId?: string
+}
+
+interface ProcedureGroup {
+  id: string
+  code: string
+  name: string
+  description?: string
+  isActive: boolean
+}
+
+function ProceduresPage() {
+  const { t } = useTranslation()
+  const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
+
+  const [procedures, setProcedures] = useState<Procedure[]>([])
+  const [groups, setGroups] = useState<ProcedureGroup[]>([])
+  const [loading, setLoading] = useState(true)
+  const [searchTerm, setSearchTerm] = useState('')
+  const [filterType, setFilterType] = useState<string>('')
+  const [showInactive, setShowInactive] = useState(false)
+
+  // Modal states
+  const [showModal, setShowModal] = useState(false)
+  const [showDeleteModal, setShowDeleteModal] = useState(false)
+  const [showGroupsModal, setShowGroupsModal] = useState(false)
+  const [editingProcedure, setEditingProcedure] = useState<Procedure | null>(null)
+  const [deletingProcedure, setDeletingProcedure] = useState<Procedure | null>(null)
+
+  // Form state
+  const [formData, setFormData] = useState({
+    code: '',
+    name: '',
+    description: '',
+    type: 'INVESTIGATION' as Procedure['type'],
+    triggerType: 'MANUAL' as Procedure['triggerType'],
+    isActive: true,
+    steps: [] as ProcedureStepData[]
+  })
+
+  // Groups form state
+  const [editingGroup, setEditingGroup] = useState<ProcedureGroup | null>(null)
+  const [groupFormData, setGroupFormData] = useState({ code: '', name: '', description: '', isActive: true })
+
+  const [activeTab, setActiveTab] = useState<'info' | 'steps'>('info')
+
+  const procedureTypes = [
+    { value: 'INVESTIGATION', label: 'Investigation', color: 'bg-blue-100 text-blue-700' },
+    { value: 'VACCINATION', label: 'Vaccination', color: 'bg-emerald-100 text-emerald-700' },
+    { value: 'INSPECTION', label: 'Inspection', color: 'bg-purple-100 text-purple-700' },
+    { value: 'SAMPLING', label: 'Prélèvement', color: 'bg-orange-100 text-orange-700' },
+    { value: 'TREATMENT', label: 'Traitement', color: 'bg-cyan-100 text-cyan-700' },
+    { value: 'OTHER', label: 'Autre', color: 'bg-slate-100 text-slate-700' },
+  ]
+
+  const triggerTypes = [
+    { value: 'MANUAL', label: 'Manuel' },
+    { value: 'AUTOMATIC', label: 'Automatique' },
+    { value: 'SCHEDULED', label: 'Planifié' },
+  ]
+
+  const getHeaders = () => {
+    const token = localStorage.getItem('ccousa_token')
+    return {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${token}`
+    }
+  }
+
+  // Load procedures
+  const loadProcedures = async () => {
+    try {
+      setLoading(true)
+      const headers = getHeaders()
+      const response = await fetch(`${API_URL}/api/procedures`, { headers })
+      if (response.ok) {
+        const data = await response.json()
+        setProcedures(data.data?.items || data.items || [])
+      }
+    } catch (error) {
+      console.error('Error loading procedures:', error)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  // Load groups
+  const loadGroups = async () => {
+    try {
+      const headers = getHeaders()
+      const response = await fetch(`${API_URL}/api/procedures/groups`, { headers })
+      if (response.ok) {
+        const data = await response.json()
+        setGroups(data.data || data || [])
+      }
+    } catch (error) {
+      console.error('Error loading groups:', error)
+    }
+  }
+
+  useEffect(() => {
+    loadProcedures()
+    loadGroups()
+  }, [])
+
+  // Filter procedures
+  const filteredProcedures = procedures.filter(proc => {
+    if (!showInactive && !proc.isActive) return false
+    if (searchTerm) {
+      const search = searchTerm.toLowerCase()
+      if (!proc.name.toLowerCase().includes(search) && !proc.code.toLowerCase().includes(search)) return false
+    }
+    if (filterType && proc.type !== filterType) return false
+    return true
+  })
+
+  // Handle create/edit
+  const handleOpenModal = (procedure?: Procedure) => {
+    if (procedure) {
+      setEditingProcedure(procedure)
+      setFormData({
+        code: procedure.code,
+        name: procedure.name,
+        description: procedure.description || '',
+        type: procedure.type,
+        triggerType: procedure.triggerType,
+        isActive: procedure.isActive,
+        steps: procedure.steps || []
+      })
+    } else {
+      setEditingProcedure(null)
+      setFormData({
+        code: '',
+        name: '',
+        description: '',
+        type: 'INVESTIGATION',
+        triggerType: 'MANUAL',
+        isActive: true,
+        steps: [{ name: '', description: '', stepNumber: 1, isOptional: false, assigneeType: 'ROLE' }]
+      })
+    }
+    setActiveTab('info')
+    setShowModal(true)
+  }
+
+  const handleSave = async () => {
+    try {
+      const headers = getHeaders()
+      const url = editingProcedure
+        ? `${API_URL}/api/procedures/${editingProcedure.id}`
+        : `${API_URL}/api/procedures`
+
+      const response = await fetch(url, {
+        method: editingProcedure ? 'PUT' : 'POST',
+        headers,
+        body: JSON.stringify(formData)
+      })
+
+      if (response.ok) {
+        setShowModal(false)
+        loadProcedures()
+      }
+    } catch (error) {
+      console.error('Error saving procedure:', error)
+    }
+  }
+
+  const handleDelete = async () => {
+    if (!deletingProcedure) return
+    try {
+      const headers = getHeaders()
+      const response = await fetch(`${API_URL}/api/procedures/${deletingProcedure.id}`, {
+        method: 'DELETE',
+        headers
+      })
+      if (response.ok) {
+        setShowDeleteModal(false)
+        setDeletingProcedure(null)
+        loadProcedures()
+      }
+    } catch (error) {
+      console.error('Error deleting procedure:', error)
+    }
+  }
+
+  // Steps management
+  const addStep = () => {
+    setFormData(prev => ({
+      ...prev,
+      steps: [...prev.steps, {
+        name: '',
+        description: '',
+        stepNumber: prev.steps.length + 1,
+        isOptional: false,
+        assigneeType: 'ROLE'
+      }]
+    }))
+  }
+
+  const updateStep = (index: number, field: string, value: any) => {
+    setFormData(prev => ({
+      ...prev,
+      steps: prev.steps.map((step, i) => i === index ? { ...step, [field]: value } : step)
+    }))
+  }
+
+  const removeStep = (index: number) => {
+    setFormData(prev => ({
+      ...prev,
+      steps: prev.steps.filter((_, i) => i !== index).map((step, i) => ({ ...step, stepNumber: i + 1 }))
+    }))
+  }
+
+  // Groups management
+  const handleSaveGroup = async () => {
+    try {
+      const headers = getHeaders()
+      const url = editingGroup
+        ? `${API_URL}/api/procedures/groups/${editingGroup.id}`
+        : `${API_URL}/api/procedures/groups`
+
+      const response = await fetch(url, {
+        method: editingGroup ? 'PUT' : 'POST',
+        headers,
+        body: JSON.stringify(groupFormData)
+      })
+
+      if (response.ok) {
+        setEditingGroup(null)
+        setGroupFormData({ code: '', name: '', description: '', isActive: true })
+        loadGroups()
+      }
+    } catch (error) {
+      console.error('Error saving group:', error)
+    }
+  }
+
+  const handleDeleteGroup = async (id: string) => {
+    try {
+      const headers = getHeaders()
+      await fetch(`${API_URL}/api/procedures/groups/${id}`, { method: 'DELETE', headers })
+      loadGroups()
+    } catch (error) {
+      console.error('Error deleting group:', error)
+    }
+  }
+
+  const getTypeConfig = (type: string) => procedureTypes.find(t => t.value === type) || procedureTypes[5]
+
+  return (
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-display font-bold text-slate-800">Gestion des Procédures</h1>
+          <p className="text-slate-500 mt-1">{filteredProcedures.length} procédure(s)</p>
+        </div>
+        <div className="flex gap-2">
+          <button
+            onClick={() => setShowGroupsModal(true)}
+            className="px-4 py-2 border border-slate-300 text-slate-700 rounded-xl hover:bg-slate-50 flex items-center gap-2"
+          >
+            <FolderTree className="w-4 h-4" />
+            Groupes
+          </button>
+          <button
+            onClick={() => handleOpenModal()}
+            className="px-4 py-2 bg-primary-600 text-white rounded-xl hover:bg-primary-700 flex items-center gap-2"
+          >
+            <Plus className="w-4 h-4" />
+            Nouvelle procédure
+          </button>
+        </div>
+      </div>
+
+      {/* Filters */}
+      <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-4">
+        <div className="flex flex-col sm:flex-row gap-4">
+          <div className="flex-1 relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
+            <input
+              type="text"
+              placeholder="Rechercher une procédure..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="w-full pl-10 pr-4 py-2 border border-slate-300 rounded-xl focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+            />
+          </div>
+          <select
+            value={filterType}
+            onChange={(e) => setFilterType(e.target.value)}
+            className="px-4 py-2 border border-slate-300 rounded-xl focus:ring-2 focus:ring-primary-500"
+          >
+            <option value="">Tous les types</option>
+            {procedureTypes.map(type => (
+              <option key={type.value} value={type.value}>{type.label}</option>
+            ))}
+          </select>
+          <label className="flex items-center gap-2 text-sm text-slate-600">
+            <input
+              type="checkbox"
+              checked={showInactive}
+              onChange={(e) => setShowInactive(e.target.checked)}
+              className="rounded border-slate-300 text-primary-600 focus:ring-primary-500"
+            />
+            Afficher inactifs
+          </label>
+        </div>
+      </div>
+
+      {/* Procedures List */}
+      {loading ? (
+        <div className="flex justify-center py-12">
+          <RefreshCw className="w-8 h-8 text-primary-600 animate-spin" />
+        </div>
+      ) : filteredProcedures.length === 0 ? (
+        <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-12 text-center">
+          <ClipboardList className="w-16 h-16 text-slate-300 mx-auto mb-4" />
+          <h3 className="text-lg font-semibold text-slate-700 mb-2">Aucune procédure</h3>
+          <p className="text-slate-500 mb-4">Créez votre première procédure pour commencer</p>
+          <button
+            onClick={() => handleOpenModal()}
+            className="px-4 py-2 bg-primary-600 text-white rounded-xl hover:bg-primary-700"
+          >
+            Créer une procédure
+          </button>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {filteredProcedures.map(procedure => {
+            const typeConfig = getTypeConfig(procedure.type)
+            return (
+              <div
+                key={procedure.id}
+                className={`bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden hover:shadow-md transition-shadow ${!procedure.isActive ? 'opacity-60' : ''}`}
+              >
+                <div className="h-1" style={{ backgroundColor: typeConfig.color.includes('blue') ? '#3b82f6' : typeConfig.color.includes('emerald') ? '#10b981' : typeConfig.color.includes('purple') ? '#8b5cf6' : typeConfig.color.includes('orange') ? '#f97316' : typeConfig.color.includes('cyan') ? '#06b6d4' : '#64748b' }} />
+                <div className="p-4">
+                  <div className="flex items-start justify-between mb-3">
+                    <div>
+                      <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${typeConfig.color}`}>
+                        {typeConfig.label}
+                      </span>
+                    </div>
+                    {!procedure.isActive && (
+                      <span className="px-2 py-0.5 rounded-full text-xs bg-slate-100 text-slate-600">Inactif</span>
+                    )}
+                  </div>
+                  <p className="text-xs font-mono text-slate-400 mb-1">{procedure.code}</p>
+                  <h3 className="font-semibold text-slate-800 mb-2">{procedure.name}</h3>
+                  {procedure.description && (
+                    <p className="text-sm text-slate-500 line-clamp-2 mb-3">{procedure.description}</p>
+                  )}
+                  <div className="flex items-center gap-4 text-xs text-slate-500 mb-4">
+                    <span className="flex items-center gap-1">
+                      <Layers className="w-3.5 h-3.5" />
+                      {procedure.steps?.length || 0} étapes
+                    </span>
+                    <span className="flex items-center gap-1">
+                      {procedure.triggerType === 'MANUAL' ? <Play className="w-3.5 h-3.5" /> : procedure.triggerType === 'AUTOMATIC' ? <Zap className="w-3.5 h-3.5" /> : <Clock className="w-3.5 h-3.5" />}
+                      {triggerTypes.find(t => t.value === procedure.triggerType)?.label}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between pt-3 border-t border-slate-100">
+                    <button
+                      onClick={() => handleOpenModal(procedure)}
+                      className="text-sm text-primary-600 hover:text-primary-700 font-medium flex items-center gap-1"
+                    >
+                      <Eye className="w-4 h-4" />
+                      Voir / Modifier
+                    </button>
+                    <button
+                      onClick={() => { setDeletingProcedure(procedure); setShowDeleteModal(true) }}
+                      className="p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      )}
+
+      {/* Create/Edit Modal */}
+      {showModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-3xl max-h-[90vh] overflow-hidden flex flex-col">
+            <div className="p-6 border-b border-slate-200 flex items-center justify-between">
+              <h2 className="text-xl font-display font-bold text-slate-800">
+                {editingProcedure ? 'Modifier la procédure' : 'Nouvelle procédure'}
+              </h2>
+              <button onClick={() => setShowModal(false)} className="p-2 hover:bg-slate-100 rounded-lg">
+                <X className="w-5 h-5 text-slate-500" />
+              </button>
+            </div>
+
+            {/* Tabs */}
+            <div className="flex border-b border-slate-200 px-6">
+              <button
+                onClick={() => setActiveTab('info')}
+                className={`px-4 py-3 text-sm font-medium border-b-2 -mb-px ${activeTab === 'info' ? 'border-primary-600 text-primary-600' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
+              >
+                Informations
+              </button>
+              <button
+                onClick={() => setActiveTab('steps')}
+                className={`px-4 py-3 text-sm font-medium border-b-2 -mb-px flex items-center gap-2 ${activeTab === 'steps' ? 'border-primary-600 text-primary-600' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
+              >
+                Étapes
+                <span className="px-1.5 py-0.5 text-xs bg-slate-100 rounded-full">{formData.steps.length}</span>
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-6">
+              {activeTab === 'info' ? (
+                <div className="space-y-4">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-slate-700 mb-1">Code</label>
+                      <input
+                        type="text"
+                        value={formData.code}
+                        onChange={(e) => setFormData({ ...formData, code: e.target.value.toUpperCase() })}
+                        placeholder="PROC_001"
+                        disabled={!!editingProcedure}
+                        className="w-full px-4 py-2 border border-slate-300 rounded-xl focus:ring-2 focus:ring-primary-500 disabled:bg-slate-50"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-slate-700 mb-1">Nom</label>
+                      <input
+                        type="text"
+                        value={formData.name}
+                        onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                        placeholder="Nom de la procédure"
+                        className="w-full px-4 py-2 border border-slate-300 rounded-xl focus:ring-2 focus:ring-primary-500"
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-1">Description</label>
+                    <textarea
+                      value={formData.description}
+                      onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                      rows={3}
+                      className="w-full px-4 py-2 border border-slate-300 rounded-xl focus:ring-2 focus:ring-primary-500"
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-slate-700 mb-1">Type</label>
+                      <select
+                        value={formData.type}
+                        onChange={(e) => setFormData({ ...formData, type: e.target.value as Procedure['type'] })}
+                        className="w-full px-4 py-2 border border-slate-300 rounded-xl focus:ring-2 focus:ring-primary-500"
+                      >
+                        {procedureTypes.map(type => (
+                          <option key={type.value} value={type.value}>{type.label}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-slate-700 mb-1">Déclenchement</label>
+                      <select
+                        value={formData.triggerType}
+                        onChange={(e) => setFormData({ ...formData, triggerType: e.target.value as Procedure['triggerType'] })}
+                        className="w-full px-4 py-2 border border-slate-300 rounded-xl focus:ring-2 focus:ring-primary-500"
+                      >
+                        {triggerTypes.map(type => (
+                          <option key={type.value} value={type.value}>{type.label}</option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-3 p-4 bg-slate-50 rounded-xl">
+                    <input
+                      type="checkbox"
+                      id="isActive"
+                      checked={formData.isActive}
+                      onChange={(e) => setFormData({ ...formData, isActive: e.target.checked })}
+                      className="rounded border-slate-300 text-primary-600 focus:ring-primary-500"
+                    />
+                    <label htmlFor="isActive" className="text-sm text-slate-700">Procédure active</label>
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  <div className="flex justify-between items-center">
+                    <p className="text-sm text-slate-500">Définissez les étapes du workflow</p>
+                    <button
+                      onClick={addStep}
+                      className="px-3 py-1.5 text-sm bg-primary-600 text-white rounded-lg hover:bg-primary-700 flex items-center gap-1"
+                    >
+                      <Plus className="w-4 h-4" />
+                      Ajouter
+                    </button>
+                  </div>
+                  {formData.steps.length === 0 ? (
+                    <div className="text-center py-8 text-slate-500">
+                      <Layers className="w-12 h-12 mx-auto mb-3 text-slate-300" />
+                      <p>Aucune étape définie</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      {formData.steps.map((step, index) => (
+                        <div key={index} className="p-4 border border-slate-200 rounded-xl bg-white">
+                          <div className="flex items-center gap-3 mb-3">
+                            <div className="w-8 h-8 rounded-full bg-primary-100 text-primary-600 flex items-center justify-center font-bold text-sm">
+                              {index + 1}
+                            </div>
+                            <input
+                              type="text"
+                              value={step.name}
+                              onChange={(e) => updateStep(index, 'name', e.target.value)}
+                              placeholder="Nom de l'étape"
+                              className="flex-1 px-3 py-1.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-primary-500"
+                            />
+                            <button
+                              onClick={() => removeStep(index)}
+                              disabled={formData.steps.length <= 1}
+                              className="p-1.5 text-slate-400 hover:text-red-500 disabled:opacity-50"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
+                          <div className="grid grid-cols-2 gap-3">
+                            <input
+                              type="text"
+                              value={step.description || ''}
+                              onChange={(e) => updateStep(index, 'description', e.target.value)}
+                              placeholder="Description"
+                              className="px-3 py-1.5 border border-slate-300 rounded-lg text-sm"
+                            />
+                            <select
+                              value={step.assigneeType}
+                              onChange={(e) => updateStep(index, 'assigneeType', e.target.value)}
+                              className="px-3 py-1.5 border border-slate-300 rounded-lg text-sm"
+                            >
+                              <option value="ROLE">Rôle</option>
+                              <option value="USER">Utilisateur</option>
+                              <option value="GROUP">Groupe</option>
+                              <option value="UNIT">Unité</option>
+                            </select>
+                          </div>
+                          <div className="mt-2 flex items-center gap-4">
+                            <label className="flex items-center gap-2 text-sm text-slate-600">
+                              <input
+                                type="checkbox"
+                                checked={step.isOptional}
+                                onChange={(e) => updateStep(index, 'isOptional', e.target.checked)}
+                                className="rounded border-slate-300 text-primary-600"
+                              />
+                              Optionnelle
+                            </label>
+                            <div className="flex items-center gap-2">
+                              <Clock className="w-4 h-4 text-slate-400" />
+                              <input
+                                type="number"
+                                value={step.durationHours || ''}
+                                onChange={(e) => updateStep(index, 'durationHours', e.target.value ? parseInt(e.target.value) : undefined)}
+                                placeholder="Durée (h)"
+                                className="w-24 px-2 py-1 border border-slate-300 rounded-lg text-sm"
+                              />
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
+            <div className="p-6 border-t border-slate-200 flex justify-end gap-3">
+              <button
+                onClick={() => setShowModal(false)}
+                className="px-4 py-2 border border-slate-300 text-slate-700 rounded-xl hover:bg-slate-50"
+              >
+                Annuler
+              </button>
+              <button
+                onClick={handleSave}
+                className="px-4 py-2 bg-primary-600 text-white rounded-xl hover:bg-primary-700 flex items-center gap-2"
+              >
+                <Save className="w-4 h-4" />
+                {editingProcedure ? 'Enregistrer' : 'Créer'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {showDeleteModal && deletingProcedure && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-6">
+            <div className="text-center">
+              <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                <AlertTriangle className="w-8 h-8 text-red-600" />
+              </div>
+              <h3 className="text-lg font-semibold text-slate-800 mb-2">Supprimer la procédure</h3>
+              <p className="text-slate-500 mb-6">
+                Êtes-vous sûr de vouloir supprimer "{deletingProcedure.name}" ?
+              </p>
+              <div className="flex gap-3 justify-center">
+                <button
+                  onClick={() => { setShowDeleteModal(false); setDeletingProcedure(null) }}
+                  className="px-4 py-2 border border-slate-300 text-slate-700 rounded-xl hover:bg-slate-50"
+                >
+                  Annuler
+                </button>
+                <button
+                  onClick={handleDelete}
+                  className="px-4 py-2 bg-red-600 text-white rounded-xl hover:bg-red-700"
+                >
+                  Supprimer
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Groups Modal */}
+      {showGroupsModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl max-h-[80vh] overflow-hidden flex flex-col">
+            <div className="p-6 border-b border-slate-200 flex items-center justify-between">
+              <h2 className="text-xl font-display font-bold text-slate-800">Groupes de procédures</h2>
+              <button onClick={() => setShowGroupsModal(false)} className="p-2 hover:bg-slate-100 rounded-lg">
+                <X className="w-5 h-5 text-slate-500" />
+              </button>
+            </div>
+            <div className="flex-1 overflow-y-auto p-6">
+              {/* Group Form */}
+              <div className="mb-6 p-4 bg-slate-50 rounded-xl">
+                <h3 className="font-medium text-slate-700 mb-3">{editingGroup ? 'Modifier le groupe' : 'Nouveau groupe'}</h3>
+                <div className="grid grid-cols-2 gap-3 mb-3">
+                  <input
+                    type="text"
+                    placeholder="Code"
+                    value={groupFormData.code}
+                    onChange={(e) => setGroupFormData({ ...groupFormData, code: e.target.value.toUpperCase() })}
+                    disabled={!!editingGroup}
+                    className="px-3 py-2 border border-slate-300 rounded-lg"
+                  />
+                  <input
+                    type="text"
+                    placeholder="Nom"
+                    value={groupFormData.name}
+                    onChange={(e) => setGroupFormData({ ...groupFormData, name: e.target.value })}
+                    className="px-3 py-2 border border-slate-300 rounded-lg"
+                  />
+                </div>
+                <input
+                  type="text"
+                  placeholder="Description"
+                  value={groupFormData.description}
+                  onChange={(e) => setGroupFormData({ ...groupFormData, description: e.target.value })}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg mb-3"
+                />
+                <div className="flex justify-end gap-2">
+                  {editingGroup && (
+                    <button
+                      onClick={() => { setEditingGroup(null); setGroupFormData({ code: '', name: '', description: '', isActive: true }) }}
+                      className="px-3 py-1.5 text-sm border border-slate-300 rounded-lg"
+                    >
+                      Annuler
+                    </button>
+                  )}
+                  <button
+                    onClick={handleSaveGroup}
+                    className="px-3 py-1.5 text-sm bg-primary-600 text-white rounded-lg hover:bg-primary-700"
+                  >
+                    {editingGroup ? 'Enregistrer' : 'Ajouter'}
+                  </button>
+                </div>
+              </div>
+              {/* Groups List */}
+              <div className="space-y-2">
+                {groups.length === 0 ? (
+                  <p className="text-center text-slate-500 py-8">Aucun groupe défini</p>
+                ) : (
+                  groups.map(group => (
+                    <div key={group.id} className="flex items-center justify-between p-3 border border-slate-200 rounded-lg">
+                      <div>
+                        <p className="font-medium text-slate-800">{group.name}</p>
+                        <p className="text-xs text-slate-500">{group.code}</p>
+                      </div>
+                      <div className="flex gap-1">
+                        <button
+                          onClick={() => { setEditingGroup(group); setGroupFormData({ code: group.code, name: group.name, description: group.description || '', isActive: group.isActive }) }}
+                          className="p-1.5 text-slate-400 hover:text-primary-600 hover:bg-primary-50 rounded"
+                        >
+                          <Edit3 className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={() => handleDeleteGroup(group.id)}
+                          className="p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+/* ============================================
    PLACEHOLDER PAGE
    ============================================ */
 function PlaceholderPage({ title }: { title: string }) {
@@ -6115,7 +6859,8 @@ function App() {
           {currentPage === 'users-groups' && <GroupsManagementPage />}
           {currentPage === 'users-rights' && <RightsManagementPage />}
           {currentPage === 'settings-forms' && <FormBuilderPage />}
-          {!['dashboard', 'my-profile', 'users-management', 'users-groups', 'users-rights', 'settings-forms'].includes(currentPage) && (
+          {currentPage === 'settings-procedures' && <ProceduresPage />}
+          {!['dashboard', 'my-profile', 'users-management', 'users-groups', 'users-rights', 'settings-forms', 'settings-procedures'].includes(currentPage) && (
             <PlaceholderPage title={pageTitles[currentPage] || currentPage} />
           )}
         </main>
