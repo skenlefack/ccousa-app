@@ -1,17 +1,15 @@
 import React, { useState, useMemo } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion } from 'framer-motion';
 import {
   Users2,
   FolderPlus,
   Search,
   ChevronRight,
   ChevronDown,
-  MoreVertical,
   Edit2,
   Trash2,
   UserPlus,
   UserMinus,
-  Eye,
   X,
   Layers,
   Building,

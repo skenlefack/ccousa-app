@@ -14,7 +14,7 @@ import {
   CreateStepData,
   UpdateStepData,
 } from '../services/procedures.service';
-import type { Procedure, ProcedureStep, ProcedureGroup } from '../types';
+import type { ProcedureGroup } from '../types';
 
 // ===========================================
 // Query Keys
@@ -363,7 +363,7 @@ export function useStartProcedureExecution() {
   return useMutation({
     mutationFn: ({ procedureId, eventId }: { procedureId: string; eventId: string }) =>
       procedureExecutionsService.start(procedureId, eventId),
-    onSuccess: (execution, variables) => {
+    onSuccess: (_execution, variables) => {
       queryClient.invalidateQueries({ queryKey: procedureKeys.executions() });
       queryClient.invalidateQueries({ queryKey: procedureKeys.executionsByEvent(variables.eventId) });
       toast.success('Procédure démarrée', 'L\'exécution de la procédure a commencé.');

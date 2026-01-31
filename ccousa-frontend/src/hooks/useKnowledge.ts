@@ -476,7 +476,7 @@ export function useUpdateComment() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: ({ commentId, content, articleId }: { commentId: string; content: string; articleId: string }) =>
+    mutationFn: ({ commentId, content }: { commentId: string; content: string; articleId: string }) =>
       commentsService.update(commentId, content),
     onSuccess: (_, { articleId }) => {
       queryClient.invalidateQueries({ queryKey: articleKeys.comments(articleId) });
@@ -491,7 +491,7 @@ export function useDeleteComment() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: ({ commentId, articleId }: { commentId: string; articleId: string }) =>
+    mutationFn: ({ commentId }: { commentId: string; articleId: string }) =>
       commentsService.delete(commentId),
     onSuccess: (_, { articleId }) => {
       queryClient.invalidateQueries({ queryKey: articleKeys.comments(articleId) });
@@ -507,7 +507,7 @@ export function useLikeComment() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: ({ commentId, articleId }: { commentId: string; articleId: string }) =>
+    mutationFn: ({ commentId }: { commentId: string; articleId: string }) =>
       commentsService.like(commentId),
     onSuccess: (_, { articleId }) => {
       queryClient.invalidateQueries({ queryKey: articleKeys.comments(articleId) });

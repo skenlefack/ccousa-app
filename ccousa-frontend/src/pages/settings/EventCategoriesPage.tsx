@@ -6,10 +6,8 @@ import {
   Trash2,
   GripVertical,
   Search,
-  Filter,
-  MoreHorizontal,
   AlertTriangle,
-  Virus,
+  Bug,
   Microscope,
   Shield,
   Syringe,
@@ -49,7 +47,7 @@ import type { EventCategory } from '../../types';
 // Available icons for categories
 const availableIcons = [
   { value: 'alert-triangle', label: 'Alerte', icon: AlertTriangle },
-  { value: 'virus', label: 'Virus', icon: Virus },
+  { value: 'bug', label: 'Bug', icon: Bug },
   { value: 'microscope', label: 'Laboratoire', icon: Microscope },
   { value: 'shield', label: 'Biosécurité', icon: Shield },
   { value: 'syringe', label: 'Vaccination', icon: Syringe },

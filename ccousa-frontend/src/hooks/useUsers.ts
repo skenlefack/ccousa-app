@@ -110,17 +110,6 @@ export function useRolesList() {
 }
 
 /**
- * Get organizational units
- */
-export function useOrganizationalUnits() {
-  return useQuery({
-    queryKey: userKeys.organizationalUnits(),
-    queryFn: () => usersService.getOrganizationalUnits(),
-    select: (response) => response.data,
-  });
-}
-
-/**
  * Create user mutation
  */
 export function useCreateUser() {

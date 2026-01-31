@@ -4,12 +4,13 @@ import { motion } from 'framer-motion';
 import { cn } from '../../utils/cn';
 
 export interface TabItem {
-  key: string;
+  key?: string;
+  id?: string; // Alias for key for compatibility
   label: string;
   icon?: React.ReactNode;
   badge?: number;
   disabled?: boolean;
-  content: React.ReactNode;
+  content?: React.ReactNode;
 }
 
 export interface TabsProps {

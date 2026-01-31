@@ -42,7 +42,10 @@ export type { PaginationProps } from './Pagination';
 export { Modal, ModalBody, ModalFooter, ConfirmModal } from './Modal';
 export type { ModalProps, ModalBodyProps, ModalFooterProps, ConfirmModalProps } from './Modal';
 
-export { ToastProvider, toast } from './Toast';
+export { ToastProvider, toast, useToast } from './Toast';
+
+export { Spinner } from './Spinner';
+export type { SpinnerProps } from './Spinner';
 
 export {
   Skeleton,

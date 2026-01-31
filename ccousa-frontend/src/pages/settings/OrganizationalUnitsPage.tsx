@@ -6,11 +6,10 @@ import {
   Trash2,
   Search,
   ChevronRight,
-  ChevronDown,
   Building2,
   MapPin,
   Globe,
-  Map,
+  Map as MapIcon,
   Building,
   Home,
   FolderTree,
@@ -45,7 +44,7 @@ import type { OrganizationalUnit } from '../../types';
 // Unit type icons and colors
 const unitTypeConfig: Record<string, { icon: React.FC<{ className?: string }>; color: string; label: string }> = {
   NATIONAL: { icon: Globe, color: 'text-blue-500 bg-blue-100 dark:bg-blue-900/30', label: 'National' },
-  REGIONAL: { icon: Map, color: 'text-emerald-500 bg-emerald-100 dark:bg-emerald-900/30', label: 'Régional' },
+  REGIONAL: { icon: MapIcon, color: 'text-emerald-500 bg-emerald-100 dark:bg-emerald-900/30', label: 'Régional' },
   DEPARTMENTAL: { icon: Building2, color: 'text-amber-500 bg-amber-100 dark:bg-amber-900/30', label: 'Départemental' },
   ARRONDISSEMENT: { icon: Building, color: 'text-purple-500 bg-purple-100 dark:bg-purple-900/30', label: 'Arrondissement' },
   DISTRICT: { icon: Home, color: 'text-red-500 bg-red-100 dark:bg-red-900/30', label: 'District' },

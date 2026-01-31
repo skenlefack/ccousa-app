@@ -10,13 +10,17 @@ import {
   referenceDataService,
 } from '../services/settings.service';
 import type {
-  SystemConfiguration,
   EventCategory,
   DocumentType,
   OrganizationalUnit,
   WorkSchedule,
   WorkScheduleDay,
 } from '../types';
+
+// Flexible type for work schedule data (days without id/workScheduleId)
+type WorkScheduleInput = Omit<WorkSchedule, 'id' | 'createdAt' | 'updatedAt' | 'days'> & {
+  days?: Array<Omit<WorkScheduleDay, 'id' | 'workScheduleId'>>;
+};
 
 // Query Keys
 export const settingsKeys = {
@@ -300,8 +304,8 @@ export function useCreateWorkSchedule() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (data: Parameters<typeof workScheduleService.create>[0]) =>
-      workScheduleService.create(data),
+    mutationFn: (data: WorkScheduleInput) =>
+      workScheduleService.create(data as Parameters<typeof workScheduleService.create>[0]),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: settingsKeys.workSchedules() });
       toast.success('Horaire de travail créé');
@@ -316,8 +320,8 @@ export function useUpdateWorkSchedule() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: ({ id, data }: { id: string; data: Partial<WorkSchedule> }) =>
-      workScheduleService.update(id, data),
+    mutationFn: ({ id, data }: { id: string; data: Partial<WorkScheduleInput> }) =>
+      workScheduleService.update(id, data as Partial<WorkSchedule>),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: settingsKeys.workSchedules() });
       toast.success('Horaire de travail mis à jour');

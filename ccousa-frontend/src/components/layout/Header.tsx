@@ -10,12 +10,11 @@ import {
   Settings,
   LogOut,
   ChevronDown,
-  Globe,
   Check,
 } from 'lucide-react';
 import { cn } from '../../utils/cn';
 import { useUIStore, useAuthStore, useNotificationsStore } from '../../store';
-import { Badge, CountBadge } from '../ui';
+import { CountBadge } from '../ui';
 import { formatRelativeTime, getInitials, getFullName } from '../../utils/format';
 
 interface HeaderProps {

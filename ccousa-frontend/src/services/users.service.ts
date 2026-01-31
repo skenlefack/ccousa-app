@@ -394,10 +394,10 @@ export const groupsService = {
 
     // Build hierarchy
     const groupMap = new Map<string, Group>();
-    groups.forEach(g => groupMap.set(g.id, { ...g, children: [] }));
+    groups.forEach((g: Group) => groupMap.set(g.id, { ...g, children: [] }));
 
     const rootGroups: Group[] = [];
-    groups.forEach(g => {
+    groups.forEach((g: Group) => {
       const group = groupMap.get(g.id)!;
       if (g.parentId && groupMap.has(g.parentId)) {
         const parent = groupMap.get(g.parentId)!;

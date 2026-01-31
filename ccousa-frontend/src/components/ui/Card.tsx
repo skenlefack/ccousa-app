@@ -91,7 +91,7 @@ export const Card = React.forwardRef<HTMLDivElement, CardProps>(
         )}
 
         {/* Content */}
-        <div className="relative z-10">{children}</div>
+        <div className="relative z-10">{children as React.ReactNode}</div>
 
         {/* Glow effect */}
         {glow && (
@@ -211,38 +211,46 @@ export const CardFooter: React.FC<CardFooterProps> = ({
 
 // Stat Card - For dashboard statistics
 export interface StatCardProps extends CardProps {
-  label: string;
+  label?: string;
+  title?: string; // Alias for label
   value: string | number;
   change?: number;
   changeLabel?: string;
+  trend?: { value: number; isPositive: boolean };
   icon?: React.ReactNode;
   iconColor?: string;
+  color?: string; // Alias for iconColor
 }
 
 export const StatCard: React.FC<StatCardProps> = ({
   label,
+  title,
   value,
   change,
   changeLabel,
+  trend,
   icon,
   iconColor = 'bg-primary-100 text-primary-600 dark:bg-primary-900/30 dark:text-primary-400',
+  color,
   className,
   ...props
 }) => {
-  const isPositive = change && change > 0;
-  const isNegative = change && change < 0;
+  const displayLabel = label || title || '';
+  const effectiveChange = change ?? (trend?.value);
+  const isPositive = effectiveChange !== undefined && effectiveChange > 0;
+  const isNegative = effectiveChange !== undefined && effectiveChange < 0;
 
   return (
     <Card variant="glass" hover className={cn('group', className)} {...props}>
       <div className="flex items-start justify-between">
         <div className="space-y-2">
           <p className="text-sm font-medium text-dark-500 dark:text-dark-400">
-            {label}
+            {displayLabel}
           </p>
           <p className="text-3xl font-bold text-dark-900 dark:text-white">
             {value}
           </p>
-          {change !== undefined && (
+          {effectiveChange !== undefined && (
             <div className="flex items-center gap-1.5">
               <span
                 className={cn(
@@ -253,7 +261,7 @@ export const StatCard: React.FC<StatCardProps> = ({
                 )}
               >
                 {isPositive && '+'}
-                {change}%
+                {effectiveChange}%
               </span>
               {changeLabel && (
                 <span className="text-xs text-dark-400 dark:text-dark-500">

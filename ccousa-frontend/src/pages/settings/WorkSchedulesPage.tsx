@@ -8,9 +8,7 @@ import {
   Calendar,
   Star,
   Copy,
-  Coffee,
   Sun,
-  Moon,
 } from 'lucide-react';
 import {
   Card,

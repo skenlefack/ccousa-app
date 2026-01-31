@@ -1,6 +1,6 @@
-import React from 'react';
+import React, { useCallback, useMemo } from 'react';
 import { Toaster, toast as hotToast } from 'react-hot-toast';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion } from 'framer-motion';
 import { CheckCircle, XCircle, AlertTriangle, Info, X } from 'lucide-react';
 import { cn } from '../../utils/cn';
 
@@ -207,5 +207,25 @@ export const toast = {
     hotToast.remove(toastId);
   },
 };
+
+// useToast hook for convenient access to toast functions
+export function useToast() {
+  const showToast = useCallback((
+    type: 'success' | 'error' | 'warning' | 'info',
+    title: string,
+    message?: string
+  ) => {
+    toast[type](title, message);
+  }, []);
+
+  return useMemo(() => ({
+    showToast,
+    success: toast.success,
+    error: toast.error,
+    warning: toast.warning,
+    info: toast.info,
+    dismiss: toast.dismiss,
+  }), [showToast]);
+}
 
 export default toast;

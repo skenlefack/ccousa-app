@@ -1,6 +1,5 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Popover, Transition } from '@headlessui/react';
-import { motion, AnimatePresence } from 'framer-motion';
 import { Pipette, Check } from 'lucide-react';
 import { cn } from '../../utils/cn';
 

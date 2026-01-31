@@ -26,6 +26,7 @@ export interface TableProps<T> {
   variant?: 'default' | 'striped' | 'bordered';
   size?: 'sm' | 'md' | 'lg';
   stickyHeader?: boolean;
+  hoverable?: boolean;
   className?: string;
 }
 

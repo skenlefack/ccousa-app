@@ -5943,11 +5943,19 @@ interface Procedure {
   code: string
   name: string
   description?: string
-  type: 'INVESTIGATION' | 'VACCINATION' | 'INSPECTION' | 'SAMPLING' | 'TREATMENT' | 'OTHER'
-  triggerType: 'MANUAL' | 'AUTOMATIC' | 'SCHEDULED'
-  isActive: boolean
   categoryId?: string
   category?: { id: string; name: string; color: string }
+  keywords?: string
+  checklist?: string
+  visibleBy?: string[]
+  triggerType: 'MANUAL' | 'AUTOMATIC'
+  triggerConfig?: {
+    frequency?: 'daily' | 'weekly' | 'monthly'
+    dayOfWeek?: number
+    dayOfMonth?: number
+    time?: string
+  }
+  isActive: boolean
   steps?: ProcedureStepData[]
   createdAt: string
   updatedAt: string
@@ -5959,84 +5967,102 @@ interface ProcedureStepData {
   description?: string
   stepNumber: number
   durationHours?: number
-  isOptional: boolean
-  assigneeType: 'USER' | 'ROLE' | 'GROUP' | 'UNIT'
-  assigneeId?: string
-  formId?: string
+  responsibles?: string[]
+  operations?: StepOperation[]
 }
 
-interface ProcedureGroup {
+interface StepOperation {
+  id?: string
+  name: string
+  description?: string
+  formId?: string
+  formName?: string
+  sortOrder: number
+}
+
+interface EventCategory {
   id: string
   code: string
   name: string
-  description?: string
-  isActive: boolean
+  color: string
 }
+
+interface UserOrGroup {
+  id: string
+  type: 'user' | 'group'
+  name: string
+  email?: string
+}
+
+interface FormItem {
+  id: string
+  code: string
+  name: string
+}
+
+type ProcedureView = 'list' | 'form' | 'steps'
 
 function ProceduresPage() {
   const { t } = useTranslation()
   const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 
+  // View state
+  const [currentView, setCurrentView] = useState<ProcedureView>('list')
+  const [selectedProcedure, setSelectedProcedure] = useState<Procedure | null>(null)
+
+  // Data states
   const [procedures, setProcedures] = useState<Procedure[]>([])
-  const [groups, setGroups] = useState<ProcedureGroup[]>([])
+  const [categories, setCategories] = useState<EventCategory[]>([])
+  const [usersAndGroups, setUsersAndGroups] = useState<UserOrGroup[]>([])
+  const [forms, setForms] = useState<FormItem[]>([])
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState('')
-  const [filterType, setFilterType] = useState<string>('')
-  const [showInactive, setShowInactive] = useState(false)
 
-  // Modal states
-  const [showModal, setShowModal] = useState(false)
-  const [showDeleteModal, setShowDeleteModal] = useState(false)
-  const [showGroupsModal, setShowGroupsModal] = useState(false)
-  const [editingProcedure, setEditingProcedure] = useState<Procedure | null>(null)
-  const [deletingProcedure, setDeletingProcedure] = useState<Procedure | null>(null)
-
-  // Form state
+  // Form state for procedure
   const [formData, setFormData] = useState({
-    code: '',
     name: '',
-    description: '',
-    type: 'INVESTIGATION' as Procedure['type'],
-    triggerType: 'MANUAL' as Procedure['triggerType'],
-    isActive: true,
-    steps: [] as ProcedureStepData[]
+    categoryId: '',
+    keywords: '',
+    checklist: '',
+    visibleBy: [] as string[],
+    triggerType: 'MANUAL' as 'MANUAL' | 'AUTOMATIC',
+    triggerConfig: {
+      frequency: 'daily' as 'daily' | 'weekly' | 'monthly',
+      dayOfWeek: 1,
+      dayOfMonth: 1,
+      time: '09:00'
+    }
   })
 
-  // Groups form state
-  const [editingGroup, setEditingGroup] = useState<ProcedureGroup | null>(null)
-  const [groupFormData, setGroupFormData] = useState({ code: '', name: '', description: '', isActive: true })
+  // Steps state
+  const [steps, setSteps] = useState<ProcedureStepData[]>([])
+  const [draggedStep, setDraggedStep] = useState<number | null>(null)
 
-  const [activeTab, setActiveTab] = useState<'info' | 'steps'>('info')
+  // Operations modal state
+  const [showOperationsModal, setShowOperationsModal] = useState(false)
+  const [editingStepIndex, setEditingStepIndex] = useState<number | null>(null)
+  const [operationForm, setOperationForm] = useState({ name: '', description: '', formId: '' })
 
-  const procedureTypes = [
-    { value: 'INVESTIGATION', label: 'Investigation', color: 'bg-blue-100 text-blue-700' },
-    { value: 'VACCINATION', label: 'Vaccination', color: 'bg-emerald-100 text-emerald-700' },
-    { value: 'INSPECTION', label: 'Inspection', color: 'bg-purple-100 text-purple-700' },
-    { value: 'SAMPLING', label: 'Prélèvement', color: 'bg-orange-100 text-orange-700' },
-    { value: 'TREATMENT', label: 'Traitement', color: 'bg-cyan-100 text-cyan-700' },
-    { value: 'OTHER', label: 'Autre', color: 'bg-slate-100 text-slate-700' },
-  ]
+  // Autocomplete states
+  const [visibleBySearch, setVisibleBySearch] = useState('')
+  const [showVisibleByDropdown, setShowVisibleByDropdown] = useState(false)
+  const [responsibleSearch, setResponsibleSearch] = useState('')
+  const [showResponsibleDropdown, setShowResponsibleDropdown] = useState<number | null>(null)
 
-  const triggerTypes = [
-    { value: 'MANUAL', label: 'Manuel' },
-    { value: 'AUTOMATIC', label: 'Automatique' },
-    { value: 'SCHEDULED', label: 'Planifié' },
-  ]
+  // Delete modal
+  const [showDeleteModal, setShowDeleteModal] = useState(false)
+  const [deletingProcedure, setDeletingProcedure] = useState<Procedure | null>(null)
 
   const getHeaders = () => {
     const token = localStorage.getItem('ccousa_token')
-    return {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${token}`
-    }
+    return { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` }
   }
 
-  // Load procedures
+  // Load data
   const loadProcedures = async () => {
     try {
       setLoading(true)
-      const headers = getHeaders()
-      const response = await fetch(`${API_URL}/api/procedures`, { headers })
+      const response = await fetch(`${API_URL}/api/procedures`, { headers: getHeaders() })
       if (response.ok) {
         const data = await response.json()
         setProcedures(data.data?.items || data.items || [])
@@ -6048,100 +6074,150 @@ function ProceduresPage() {
     }
   }
 
-  // Load groups
-  const loadGroups = async () => {
+  const loadCategories = async () => {
     try {
-      const headers = getHeaders()
-      const response = await fetch(`${API_URL}/api/procedures/groups`, { headers })
+      const response = await fetch(`${API_URL}/api/config/event-categories`, { headers: getHeaders() })
       if (response.ok) {
         const data = await response.json()
-        setGroups(data.data || data || [])
+        setCategories(data.data || data || [])
       }
     } catch (error) {
-      console.error('Error loading groups:', error)
+      console.error('Error loading categories:', error)
+    }
+  }
+
+  const loadUsersAndGroups = async () => {
+    try {
+      const [usersRes, groupsRes] = await Promise.all([
+        fetch(`${API_URL}/api/users`, { headers: getHeaders() }),
+        fetch(`${API_URL}/api/users/groups/list`, { headers: getHeaders() })
+      ])
+      const usersData = usersRes.ok ? await usersRes.json() : { data: { items: [] } }
+      const groupsData = groupsRes.ok ? await groupsRes.json() : { data: [] }
+
+      const users = (usersData.data?.items || []).map((u: any) => ({
+        id: u.id, type: 'user' as const, name: `${u.firstName} ${u.lastName}`, email: u.email
+      }))
+      const groups = (groupsData.data || groupsData || []).map((g: any) => ({
+        id: g.id, type: 'group' as const, name: g.name
+      }))
+      setUsersAndGroups([...users, ...groups])
+    } catch (error) {
+      console.error('Error loading users/groups:', error)
+    }
+  }
+
+  const loadForms = async () => {
+    try {
+      const response = await fetch(`${API_URL}/api/forms`, { headers: getHeaders() })
+      if (response.ok) {
+        const data = await response.json()
+        setForms(data.data?.items || data.items || [])
+      }
+    } catch (error) {
+      console.error('Error loading forms:', error)
     }
   }
 
   useEffect(() => {
     loadProcedures()
-    loadGroups()
+    loadCategories()
+    loadUsersAndGroups()
+    loadForms()
   }, [])
 
   // Filter procedures
   const filteredProcedures = procedures.filter(proc => {
-    if (!showInactive && !proc.isActive) return false
     if (searchTerm) {
       const search = searchTerm.toLowerCase()
-      if (!proc.name.toLowerCase().includes(search) && !proc.code.toLowerCase().includes(search)) return false
+      return proc.name.toLowerCase().includes(search) || proc.keywords?.toLowerCase().includes(search)
     }
-    if (filterType && proc.type !== filterType) return false
     return true
   })
 
-  // Handle create/edit
-  const handleOpenModal = (procedure?: Procedure) => {
-    if (procedure) {
-      setEditingProcedure(procedure)
-      setFormData({
-        code: procedure.code,
-        name: procedure.name,
-        description: procedure.description || '',
-        type: procedure.type,
-        triggerType: procedure.triggerType,
-        isActive: procedure.isActive,
-        steps: procedure.steps || []
-      })
-    } else {
-      setEditingProcedure(null)
-      setFormData({
-        code: '',
-        name: '',
-        description: '',
-        type: 'INVESTIGATION',
-        triggerType: 'MANUAL',
-        isActive: true,
-        steps: [{ name: '', description: '', stepNumber: 1, isOptional: false, assigneeType: 'ROLE' }]
-      })
-    }
-    setActiveTab('info')
-    setShowModal(true)
+  // Navigation handlers
+  const handleNewProcedure = () => {
+    setSelectedProcedure(null)
+    setFormData({
+      name: '', categoryId: '', keywords: '', checklist: '',
+      visibleBy: [], triggerType: 'MANUAL',
+      triggerConfig: { frequency: 'daily', dayOfWeek: 1, dayOfMonth: 1, time: '09:00' }
+    })
+    setCurrentView('form')
   }
 
-  const handleSave = async () => {
+  const handleEditProcedure = (procedure: Procedure) => {
+    setSelectedProcedure(procedure)
+    setFormData({
+      name: procedure.name,
+      categoryId: procedure.categoryId || '',
+      keywords: procedure.keywords || '',
+      checklist: procedure.checklist || '',
+      visibleBy: procedure.visibleBy || [],
+      triggerType: procedure.triggerType,
+      triggerConfig: procedure.triggerConfig || { frequency: 'daily', dayOfWeek: 1, dayOfMonth: 1, time: '09:00' }
+    })
+    setCurrentView('form')
+  }
+
+  const handleManageSteps = (procedure: Procedure) => {
+    setSelectedProcedure(procedure)
+    setSteps(procedure.steps || [])
+    setCurrentView('steps')
+  }
+
+  const handleBack = () => {
+    setCurrentView('list')
+    setSelectedProcedure(null)
+  }
+
+  // Save procedure
+  const handleSaveProcedure = async () => {
     try {
-      const headers = getHeaders()
-      const url = editingProcedure
-        ? `${API_URL}/api/procedures/${editingProcedure.id}`
-        : `${API_URL}/api/procedures`
-
+      const payload = {
+        ...formData,
+        code: selectedProcedure?.code || `PROC_${Date.now()}`,
+        isActive: true
+      }
+      const url = selectedProcedure ? `${API_URL}/api/procedures/${selectedProcedure.id}` : `${API_URL}/api/procedures`
       const response = await fetch(url, {
-        method: editingProcedure ? 'PUT' : 'POST',
-        headers,
-        body: JSON.stringify(formData)
+        method: selectedProcedure ? 'PUT' : 'POST',
+        headers: getHeaders(),
+        body: JSON.stringify(payload)
       })
-
       if (response.ok) {
-        setShowModal(false)
         loadProcedures()
+        setCurrentView('list')
       }
     } catch (error) {
       console.error('Error saving procedure:', error)
     }
   }
 
+  // Save steps
+  const handleSaveSteps = async () => {
+    if (!selectedProcedure) return
+    try {
+      await fetch(`${API_URL}/api/procedures/${selectedProcedure.id}/steps/bulk`, {
+        method: 'PUT',
+        headers: getHeaders(),
+        body: JSON.stringify({ steps })
+      })
+      loadProcedures()
+      setCurrentView('list')
+    } catch (error) {
+      console.error('Error saving steps:', error)
+    }
+  }
+
+  // Delete procedure
   const handleDelete = async () => {
     if (!deletingProcedure) return
     try {
-      const headers = getHeaders()
-      const response = await fetch(`${API_URL}/api/procedures/${deletingProcedure.id}`, {
-        method: 'DELETE',
-        headers
-      })
-      if (response.ok) {
-        setShowDeleteModal(false)
-        setDeletingProcedure(null)
-        loadProcedures()
-      }
+      await fetch(`${API_URL}/api/procedures/${deletingProcedure.id}`, { method: 'DELETE', headers: getHeaders() })
+      setShowDeleteModal(false)
+      setDeletingProcedure(null)
+      loadProcedures()
     } catch (error) {
       console.error('Error deleting procedure:', error)
     }
@@ -6149,534 +6225,538 @@ function ProceduresPage() {
 
   // Steps management
   const addStep = () => {
-    setFormData(prev => ({
-      ...prev,
-      steps: [...prev.steps, {
-        name: '',
-        description: '',
-        stepNumber: prev.steps.length + 1,
-        isOptional: false,
-        assigneeType: 'ROLE'
-      }]
-    }))
+    setSteps([...steps, { name: '', stepNumber: steps.length + 1, responsibles: [], operations: [] }])
   }
 
   const updateStep = (index: number, field: string, value: any) => {
-    setFormData(prev => ({
-      ...prev,
-      steps: prev.steps.map((step, i) => i === index ? { ...step, [field]: value } : step)
-    }))
+    setSteps(steps.map((s, i) => i === index ? { ...s, [field]: value } : s))
   }
 
   const removeStep = (index: number) => {
-    setFormData(prev => ({
-      ...prev,
-      steps: prev.steps.filter((_, i) => i !== index).map((step, i) => ({ ...step, stepNumber: i + 1 }))
-    }))
+    setSteps(steps.filter((_, i) => i !== index).map((s, i) => ({ ...s, stepNumber: i + 1 })))
   }
 
-  // Groups management
-  const handleSaveGroup = async () => {
-    try {
-      const headers = getHeaders()
-      const url = editingGroup
-        ? `${API_URL}/api/procedures/groups/${editingGroup.id}`
-        : `${API_URL}/api/procedures/groups`
+  // Drag and drop
+  const handleDragStart = (index: number) => setDraggedStep(index)
+  const handleDragOver = (e: React.DragEvent, index: number) => {
+    e.preventDefault()
+    if (draggedStep === null || draggedStep === index) return
+    const newSteps = [...steps]
+    const draggedItem = newSteps[draggedStep]
+    newSteps.splice(draggedStep, 1)
+    newSteps.splice(index, 0, draggedItem)
+    setSteps(newSteps.map((s, i) => ({ ...s, stepNumber: i + 1 })))
+    setDraggedStep(index)
+  }
+  const handleDragEnd = () => setDraggedStep(null)
 
-      const response = await fetch(url, {
-        method: editingGroup ? 'PUT' : 'POST',
-        headers,
-        body: JSON.stringify(groupFormData)
-      })
+  // Operations management
+  const openOperationsModal = (stepIndex: number) => {
+    setEditingStepIndex(stepIndex)
+    setOperationForm({ name: '', description: '', formId: '' })
+    setShowOperationsModal(true)
+  }
 
-      if (response.ok) {
-        setEditingGroup(null)
-        setGroupFormData({ code: '', name: '', description: '', isActive: true })
-        loadGroups()
-      }
-    } catch (error) {
-      console.error('Error saving group:', error)
+  const addOperation = () => {
+    if (editingStepIndex === null || !operationForm.name) return
+    const step = steps[editingStepIndex]
+    const newOperation: StepOperation = {
+      ...operationForm,
+      formName: forms.find(f => f.id === operationForm.formId)?.name,
+      sortOrder: (step.operations?.length || 0) + 1
     }
+    updateStep(editingStepIndex, 'operations', [...(step.operations || []), newOperation])
+    setOperationForm({ name: '', description: '', formId: '' })
   }
 
-  const handleDeleteGroup = async (id: string) => {
-    try {
-      const headers = getHeaders()
-      await fetch(`${API_URL}/api/procedures/groups/${id}`, { method: 'DELETE', headers })
-      loadGroups()
-    } catch (error) {
-      console.error('Error deleting group:', error)
+  const removeOperation = (stepIndex: number, opIndex: number) => {
+    const step = steps[stepIndex]
+    updateStep(stepIndex, 'operations', step.operations?.filter((_, i) => i !== opIndex))
+  }
+
+  // Autocomplete helpers
+  const filteredUsersGroups = usersAndGroups.filter(ug =>
+    ug.name.toLowerCase().includes((currentView === 'form' ? visibleBySearch : responsibleSearch).toLowerCase())
+  )
+
+  const addVisibleBy = (item: UserOrGroup) => {
+    if (!formData.visibleBy.includes(item.id)) {
+      setFormData({ ...formData, visibleBy: [...formData.visibleBy, item.id] })
     }
+    setVisibleBySearch('')
+    setShowVisibleByDropdown(false)
   }
 
-  const getTypeConfig = (type: string) => procedureTypes.find(t => t.value === type) || procedureTypes[5]
+  const removeVisibleBy = (id: string) => {
+    setFormData({ ...formData, visibleBy: formData.visibleBy.filter(v => v !== id) })
+  }
 
-  return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-display font-bold text-slate-800">Gestion des Procédures</h1>
-          <p className="text-slate-500 mt-1">{filteredProcedures.length} procédure(s)</p>
-        </div>
-        <div className="flex gap-2">
-          <button
-            onClick={() => setShowGroupsModal(true)}
-            className="px-4 py-2 border border-slate-300 text-slate-700 rounded-xl hover:bg-slate-50 flex items-center gap-2"
-          >
-            <FolderTree className="w-4 h-4" />
-            Groupes
-          </button>
-          <button
-            onClick={() => handleOpenModal()}
-            className="px-4 py-2 bg-primary-600 text-white rounded-xl hover:bg-primary-700 flex items-center gap-2"
-          >
-            <Plus className="w-4 h-4" />
-            Nouvelle procédure
-          </button>
-        </div>
-      </div>
+  const addResponsible = (stepIndex: number, item: UserOrGroup) => {
+    const step = steps[stepIndex]
+    if (!step.responsibles?.includes(item.id)) {
+      updateStep(stepIndex, 'responsibles', [...(step.responsibles || []), item.id])
+    }
+    setResponsibleSearch('')
+    setShowResponsibleDropdown(null)
+  }
 
-      {/* Filters */}
-      <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-4">
-        <div className="flex flex-col sm:flex-row gap-4">
-          <div className="flex-1 relative">
+  const removeResponsible = (stepIndex: number, id: string) => {
+    const step = steps[stepIndex]
+    updateStep(stepIndex, 'responsibles', step.responsibles?.filter(r => r !== id))
+  }
+
+  const getItemName = (id: string) => usersAndGroups.find(ug => ug.id === id)?.name || id
+
+  // ==================== RENDER VIEWS ====================
+
+  // LIST VIEW
+  if (currentView === 'list') {
+    return (
+      <div className="space-y-6">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+          <div>
+            <h1 className="text-2xl font-display font-bold text-slate-800">Gestion des Procédures</h1>
+            <p className="text-slate-500 mt-1">{filteredProcedures.length} procédure(s)</p>
+          </div>
+          <button onClick={handleNewProcedure} className="px-4 py-2 bg-primary-600 text-white rounded-xl hover:bg-primary-700 flex items-center gap-2">
+            <Plus className="w-4 h-4" /> Nouvelle procédure
+          </button>
+        </div>
+
+        <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-4">
+          <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
-            <input
-              type="text"
-              placeholder="Rechercher une procédure..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 border border-slate-300 rounded-xl focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
-            />
+            <input type="text" placeholder="Rechercher..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)}
+              className="w-full pl-10 pr-4 py-2 border border-slate-300 rounded-xl focus:ring-2 focus:ring-primary-500" />
           </div>
-          <select
-            value={filterType}
-            onChange={(e) => setFilterType(e.target.value)}
-            className="px-4 py-2 border border-slate-300 rounded-xl focus:ring-2 focus:ring-primary-500"
-          >
-            <option value="">Tous les types</option>
-            {procedureTypes.map(type => (
-              <option key={type.value} value={type.value}>{type.label}</option>
-            ))}
-          </select>
-          <label className="flex items-center gap-2 text-sm text-slate-600">
-            <input
-              type="checkbox"
-              checked={showInactive}
-              onChange={(e) => setShowInactive(e.target.checked)}
-              className="rounded border-slate-300 text-primary-600 focus:ring-primary-500"
-            />
-            Afficher inactifs
-          </label>
         </div>
-      </div>
 
-      {/* Procedures List */}
-      {loading ? (
-        <div className="flex justify-center py-12">
-          <RefreshCw className="w-8 h-8 text-primary-600 animate-spin" />
-        </div>
-      ) : filteredProcedures.length === 0 ? (
-        <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-12 text-center">
-          <ClipboardList className="w-16 h-16 text-slate-300 mx-auto mb-4" />
-          <h3 className="text-lg font-semibold text-slate-700 mb-2">Aucune procédure</h3>
-          <p className="text-slate-500 mb-4">Créez votre première procédure pour commencer</p>
-          <button
-            onClick={() => handleOpenModal()}
-            className="px-4 py-2 bg-primary-600 text-white rounded-xl hover:bg-primary-700"
-          >
-            Créer une procédure
-          </button>
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {filteredProcedures.map(procedure => {
-            const typeConfig = getTypeConfig(procedure.type)
-            return (
-              <div
-                key={procedure.id}
-                className={`bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden hover:shadow-md transition-shadow ${!procedure.isActive ? 'opacity-60' : ''}`}
-              >
-                <div className="h-1" style={{ backgroundColor: typeConfig.color.includes('blue') ? '#3b82f6' : typeConfig.color.includes('emerald') ? '#10b981' : typeConfig.color.includes('purple') ? '#8b5cf6' : typeConfig.color.includes('orange') ? '#f97316' : typeConfig.color.includes('cyan') ? '#06b6d4' : '#64748b' }} />
-                <div className="p-4">
-                  <div className="flex items-start justify-between mb-3">
-                    <div>
-                      <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${typeConfig.color}`}>
-                        {typeConfig.label}
+        {loading ? (
+          <div className="flex justify-center py-12"><RefreshCw className="w-8 h-8 text-primary-600 animate-spin" /></div>
+        ) : filteredProcedures.length === 0 ? (
+          <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-12 text-center">
+            <ClipboardList className="w-16 h-16 text-slate-300 mx-auto mb-4" />
+            <h3 className="text-lg font-semibold text-slate-700 mb-2">Aucune procédure</h3>
+            <button onClick={handleNewProcedure} className="px-4 py-2 bg-primary-600 text-white rounded-xl hover:bg-primary-700">Créer une procédure</button>
+          </div>
+        ) : (
+          <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+            <table className="w-full">
+              <thead className="bg-slate-50 border-b border-slate-200">
+                <tr>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase">Procédure</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase">Catégorie</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase">Déclenchement</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase">Étapes</th>
+                  <th className="px-4 py-3 text-right text-xs font-semibold text-slate-600 uppercase">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {filteredProcedures.map(proc => (
+                  <tr key={proc.id} className="hover:bg-slate-50">
+                    <td className="px-4 py-3">
+                      <p className="font-medium text-slate-800">{proc.name}</p>
+                      {proc.keywords && <p className="text-xs text-slate-500">{proc.keywords}</p>}
+                    </td>
+                    <td className="px-4 py-3">
+                      {proc.category && (
+                        <span className="inline-flex items-center gap-1.5 px-2 py-1 rounded-full text-xs font-medium" style={{ backgroundColor: `${proc.category.color}20`, color: proc.category.color }}>
+                          <span className="w-2 h-2 rounded-full" style={{ backgroundColor: proc.category.color }} />
+                          {proc.category.name}
+                        </span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3">
+                      <span className={`inline-flex items-center gap-1 text-xs ${proc.triggerType === 'MANUAL' ? 'text-blue-600' : 'text-amber-600'}`}>
+                        {proc.triggerType === 'MANUAL' ? <Play className="w-3.5 h-3.5" /> : <Zap className="w-3.5 h-3.5" />}
+                        {proc.triggerType === 'MANUAL' ? 'Manuel' : 'Automatique'}
                       </span>
-                    </div>
-                    {!procedure.isActive && (
-                      <span className="px-2 py-0.5 rounded-full text-xs bg-slate-100 text-slate-600">Inactif</span>
-                    )}
-                  </div>
-                  <p className="text-xs font-mono text-slate-400 mb-1">{procedure.code}</p>
-                  <h3 className="font-semibold text-slate-800 mb-2">{procedure.name}</h3>
-                  {procedure.description && (
-                    <p className="text-sm text-slate-500 line-clamp-2 mb-3">{procedure.description}</p>
-                  )}
-                  <div className="flex items-center gap-4 text-xs text-slate-500 mb-4">
-                    <span className="flex items-center gap-1">
-                      <Layers className="w-3.5 h-3.5" />
-                      {procedure.steps?.length || 0} étapes
-                    </span>
-                    <span className="flex items-center gap-1">
-                      {procedure.triggerType === 'MANUAL' ? <Play className="w-3.5 h-3.5" /> : procedure.triggerType === 'AUTOMATIC' ? <Zap className="w-3.5 h-3.5" /> : <Clock className="w-3.5 h-3.5" />}
-                      {triggerTypes.find(t => t.value === procedure.triggerType)?.label}
-                    </span>
-                  </div>
-                  <div className="flex items-center justify-between pt-3 border-t border-slate-100">
-                    <button
-                      onClick={() => handleOpenModal(procedure)}
-                      className="text-sm text-primary-600 hover:text-primary-700 font-medium flex items-center gap-1"
-                    >
-                      <Eye className="w-4 h-4" />
-                      Voir / Modifier
-                    </button>
-                    <button
-                      onClick={() => { setDeletingProcedure(procedure); setShowDeleteModal(true) }}
-                      className="p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </div>
-                </div>
-              </div>
-            )
-          })}
-        </div>
-      )}
-
-      {/* Create/Edit Modal */}
-      {showModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-3xl max-h-[90vh] overflow-hidden flex flex-col">
-            <div className="p-6 border-b border-slate-200 flex items-center justify-between">
-              <h2 className="text-xl font-display font-bold text-slate-800">
-                {editingProcedure ? 'Modifier la procédure' : 'Nouvelle procédure'}
-              </h2>
-              <button onClick={() => setShowModal(false)} className="p-2 hover:bg-slate-100 rounded-lg">
-                <X className="w-5 h-5 text-slate-500" />
-              </button>
-            </div>
-
-            {/* Tabs */}
-            <div className="flex border-b border-slate-200 px-6">
-              <button
-                onClick={() => setActiveTab('info')}
-                className={`px-4 py-3 text-sm font-medium border-b-2 -mb-px ${activeTab === 'info' ? 'border-primary-600 text-primary-600' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
-              >
-                Informations
-              </button>
-              <button
-                onClick={() => setActiveTab('steps')}
-                className={`px-4 py-3 text-sm font-medium border-b-2 -mb-px flex items-center gap-2 ${activeTab === 'steps' ? 'border-primary-600 text-primary-600' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
-              >
-                Étapes
-                <span className="px-1.5 py-0.5 text-xs bg-slate-100 rounded-full">{formData.steps.length}</span>
-              </button>
-            </div>
-
-            <div className="flex-1 overflow-y-auto p-6">
-              {activeTab === 'info' ? (
-                <div className="space-y-4">
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-sm font-medium text-slate-700 mb-1">Code</label>
-                      <input
-                        type="text"
-                        value={formData.code}
-                        onChange={(e) => setFormData({ ...formData, code: e.target.value.toUpperCase() })}
-                        placeholder="PROC_001"
-                        disabled={!!editingProcedure}
-                        className="w-full px-4 py-2 border border-slate-300 rounded-xl focus:ring-2 focus:ring-primary-500 disabled:bg-slate-50"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-slate-700 mb-1">Nom</label>
-                      <input
-                        type="text"
-                        value={formData.name}
-                        onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                        placeholder="Nom de la procédure"
-                        className="w-full px-4 py-2 border border-slate-300 rounded-xl focus:ring-2 focus:ring-primary-500"
-                      />
-                    </div>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-1">Description</label>
-                    <textarea
-                      value={formData.description}
-                      onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                      rows={3}
-                      className="w-full px-4 py-2 border border-slate-300 rounded-xl focus:ring-2 focus:ring-primary-500"
-                    />
-                  </div>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-sm font-medium text-slate-700 mb-1">Type</label>
-                      <select
-                        value={formData.type}
-                        onChange={(e) => setFormData({ ...formData, type: e.target.value as Procedure['type'] })}
-                        className="w-full px-4 py-2 border border-slate-300 rounded-xl focus:ring-2 focus:ring-primary-500"
-                      >
-                        {procedureTypes.map(type => (
-                          <option key={type.value} value={type.value}>{type.label}</option>
-                        ))}
-                      </select>
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-slate-700 mb-1">Déclenchement</label>
-                      <select
-                        value={formData.triggerType}
-                        onChange={(e) => setFormData({ ...formData, triggerType: e.target.value as Procedure['triggerType'] })}
-                        className="w-full px-4 py-2 border border-slate-300 rounded-xl focus:ring-2 focus:ring-primary-500"
-                      >
-                        {triggerTypes.map(type => (
-                          <option key={type.value} value={type.value}>{type.label}</option>
-                        ))}
-                      </select>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-3 p-4 bg-slate-50 rounded-xl">
-                    <input
-                      type="checkbox"
-                      id="isActive"
-                      checked={formData.isActive}
-                      onChange={(e) => setFormData({ ...formData, isActive: e.target.checked })}
-                      className="rounded border-slate-300 text-primary-600 focus:ring-primary-500"
-                    />
-                    <label htmlFor="isActive" className="text-sm text-slate-700">Procédure active</label>
-                  </div>
-                </div>
-              ) : (
-                <div className="space-y-4">
-                  <div className="flex justify-between items-center">
-                    <p className="text-sm text-slate-500">Définissez les étapes du workflow</p>
-                    <button
-                      onClick={addStep}
-                      className="px-3 py-1.5 text-sm bg-primary-600 text-white rounded-lg hover:bg-primary-700 flex items-center gap-1"
-                    >
-                      <Plus className="w-4 h-4" />
-                      Ajouter
-                    </button>
-                  </div>
-                  {formData.steps.length === 0 ? (
-                    <div className="text-center py-8 text-slate-500">
-                      <Layers className="w-12 h-12 mx-auto mb-3 text-slate-300" />
-                      <p>Aucune étape définie</p>
-                    </div>
-                  ) : (
-                    <div className="space-y-3">
-                      {formData.steps.map((step, index) => (
-                        <div key={index} className="p-4 border border-slate-200 rounded-xl bg-white">
-                          <div className="flex items-center gap-3 mb-3">
-                            <div className="w-8 h-8 rounded-full bg-primary-100 text-primary-600 flex items-center justify-center font-bold text-sm">
-                              {index + 1}
-                            </div>
-                            <input
-                              type="text"
-                              value={step.name}
-                              onChange={(e) => updateStep(index, 'name', e.target.value)}
-                              placeholder="Nom de l'étape"
-                              className="flex-1 px-3 py-1.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-primary-500"
-                            />
-                            <button
-                              onClick={() => removeStep(index)}
-                              disabled={formData.steps.length <= 1}
-                              className="p-1.5 text-slate-400 hover:text-red-500 disabled:opacity-50"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
-                          </div>
-                          <div className="grid grid-cols-2 gap-3">
-                            <input
-                              type="text"
-                              value={step.description || ''}
-                              onChange={(e) => updateStep(index, 'description', e.target.value)}
-                              placeholder="Description"
-                              className="px-3 py-1.5 border border-slate-300 rounded-lg text-sm"
-                            />
-                            <select
-                              value={step.assigneeType}
-                              onChange={(e) => updateStep(index, 'assigneeType', e.target.value)}
-                              className="px-3 py-1.5 border border-slate-300 rounded-lg text-sm"
-                            >
-                              <option value="ROLE">Rôle</option>
-                              <option value="USER">Utilisateur</option>
-                              <option value="GROUP">Groupe</option>
-                              <option value="UNIT">Unité</option>
-                            </select>
-                          </div>
-                          <div className="mt-2 flex items-center gap-4">
-                            <label className="flex items-center gap-2 text-sm text-slate-600">
-                              <input
-                                type="checkbox"
-                                checked={step.isOptional}
-                                onChange={(e) => updateStep(index, 'isOptional', e.target.checked)}
-                                className="rounded border-slate-300 text-primary-600"
-                              />
-                              Optionnelle
-                            </label>
-                            <div className="flex items-center gap-2">
-                              <Clock className="w-4 h-4 text-slate-400" />
-                              <input
-                                type="number"
-                                value={step.durationHours || ''}
-                                onChange={(e) => updateStep(index, 'durationHours', e.target.value ? parseInt(e.target.value) : undefined)}
-                                placeholder="Durée (h)"
-                                className="w-24 px-2 py-1 border border-slate-300 rounded-lg text-sm"
-                              />
-                            </div>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-
-            <div className="p-6 border-t border-slate-200 flex justify-end gap-3">
-              <button
-                onClick={() => setShowModal(false)}
-                className="px-4 py-2 border border-slate-300 text-slate-700 rounded-xl hover:bg-slate-50"
-              >
-                Annuler
-              </button>
-              <button
-                onClick={handleSave}
-                className="px-4 py-2 bg-primary-600 text-white rounded-xl hover:bg-primary-700 flex items-center gap-2"
-              >
-                <Save className="w-4 h-4" />
-                {editingProcedure ? 'Enregistrer' : 'Créer'}
-              </button>
-            </div>
+                    </td>
+                    <td className="px-4 py-3">
+                      <span className="text-sm text-slate-600">{proc.steps?.length || 0} étape(s)</span>
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="flex items-center justify-end gap-1">
+                        <button onClick={() => handleManageSteps(proc)} className="p-2 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg" title="Gérer les étapes">
+                          <Layers className="w-4 h-4" />
+                        </button>
+                        <button onClick={() => handleEditProcedure(proc)} className="p-2 text-slate-400 hover:text-primary-600 hover:bg-primary-50 rounded-lg" title="Modifier">
+                          <Edit3 className="w-4 h-4" />
+                        </button>
+                        <button onClick={() => { setDeletingProcedure(proc); setShowDeleteModal(true) }} className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg" title="Supprimer">
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
-        </div>
-      )}
+        )}
 
-      {/* Delete Confirmation Modal */}
-      {showDeleteModal && deletingProcedure && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-6">
-            <div className="text-center">
+        {/* Delete Modal */}
+        {showDeleteModal && deletingProcedure && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-6 text-center">
               <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
                 <AlertTriangle className="w-8 h-8 text-red-600" />
               </div>
               <h3 className="text-lg font-semibold text-slate-800 mb-2">Supprimer la procédure</h3>
-              <p className="text-slate-500 mb-6">
-                Êtes-vous sûr de vouloir supprimer "{deletingProcedure.name}" ?
-              </p>
+              <p className="text-slate-500 mb-6">Supprimer "{deletingProcedure.name}" ?</p>
               <div className="flex gap-3 justify-center">
-                <button
-                  onClick={() => { setShowDeleteModal(false); setDeletingProcedure(null) }}
-                  className="px-4 py-2 border border-slate-300 text-slate-700 rounded-xl hover:bg-slate-50"
-                >
-                  Annuler
-                </button>
-                <button
-                  onClick={handleDelete}
-                  className="px-4 py-2 bg-red-600 text-white rounded-xl hover:bg-red-700"
-                >
-                  Supprimer
-                </button>
+                <button onClick={() => setShowDeleteModal(false)} className="px-4 py-2 border border-slate-300 text-slate-700 rounded-xl hover:bg-slate-50">Annuler</button>
+                <button onClick={handleDelete} className="px-4 py-2 bg-red-600 text-white rounded-xl hover:bg-red-700">Supprimer</button>
               </div>
             </div>
           </div>
-        </div>
-      )}
+        )}
+      </div>
+    )
+  }
 
-      {/* Groups Modal */}
-      {showGroupsModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl max-h-[80vh] overflow-hidden flex flex-col">
-            <div className="p-6 border-b border-slate-200 flex items-center justify-between">
-              <h2 className="text-xl font-display font-bold text-slate-800">Groupes de procédures</h2>
-              <button onClick={() => setShowGroupsModal(false)} className="p-2 hover:bg-slate-100 rounded-lg">
-                <X className="w-5 h-5 text-slate-500" />
-              </button>
-            </div>
-            <div className="flex-1 overflow-y-auto p-6">
-              {/* Group Form */}
-              <div className="mb-6 p-4 bg-slate-50 rounded-xl">
-                <h3 className="font-medium text-slate-700 mb-3">{editingGroup ? 'Modifier le groupe' : 'Nouveau groupe'}</h3>
-                <div className="grid grid-cols-2 gap-3 mb-3">
-                  <input
-                    type="text"
-                    placeholder="Code"
-                    value={groupFormData.code}
-                    onChange={(e) => setGroupFormData({ ...groupFormData, code: e.target.value.toUpperCase() })}
-                    disabled={!!editingGroup}
-                    className="px-3 py-2 border border-slate-300 rounded-lg"
-                  />
-                  <input
-                    type="text"
-                    placeholder="Nom"
-                    value={groupFormData.name}
-                    onChange={(e) => setGroupFormData({ ...groupFormData, name: e.target.value })}
-                    className="px-3 py-2 border border-slate-300 rounded-lg"
-                  />
-                </div>
-                <input
-                  type="text"
-                  placeholder="Description"
-                  value={groupFormData.description}
-                  onChange={(e) => setGroupFormData({ ...groupFormData, description: e.target.value })}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg mb-3"
-                />
-                <div className="flex justify-end gap-2">
-                  {editingGroup && (
-                    <button
-                      onClick={() => { setEditingGroup(null); setGroupFormData({ code: '', name: '', description: '', isActive: true }) }}
-                      className="px-3 py-1.5 text-sm border border-slate-300 rounded-lg"
-                    >
-                      Annuler
-                    </button>
+  // FORM VIEW (Create/Edit Procedure)
+  if (currentView === 'form') {
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <h1 className="text-2xl font-display font-bold text-slate-800">
+            {selectedProcedure ? 'Modifier la procédure' : 'Nouvelle procédure'}
+          </h1>
+          <button onClick={handleBack} className="px-4 py-2 border border-slate-300 text-slate-700 rounded-xl hover:bg-slate-50 flex items-center gap-2">
+            <ArrowLeft className="w-4 h-4" /> Retour
+          </button>
+        </div>
+
+        <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 space-y-6">
+          {/* Nom */}
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">Nom de la procédure *</label>
+            <input type="text" value={formData.name} onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+              placeholder="Ex: Investigation foyer épidémique"
+              className="w-full px-4 py-2 border border-slate-300 rounded-xl focus:ring-2 focus:ring-primary-500" />
+          </div>
+
+          {/* Catégorie */}
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">Catégorie d'événement</label>
+            <select value={formData.categoryId} onChange={(e) => setFormData({ ...formData, categoryId: e.target.value })}
+              className="w-full px-4 py-2 border border-slate-300 rounded-xl focus:ring-2 focus:ring-primary-500">
+              <option value="">Sélectionner une catégorie</option>
+              {categories.map(cat => (
+                <option key={cat.id} value={cat.id}>{cat.name}</option>
+              ))}
+            </select>
+          </div>
+
+          {/* Mots clés */}
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">Mots clés</label>
+            <input type="text" value={formData.keywords} onChange={(e) => setFormData({ ...formData, keywords: e.target.value })}
+              placeholder="Ex: épidémie, investigation, terrain"
+              className="w-full px-4 py-2 border border-slate-300 rounded-xl focus:ring-2 focus:ring-primary-500" />
+          </div>
+
+          {/* Check liste */}
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">Check liste</label>
+            <textarea value={formData.checklist} onChange={(e) => setFormData({ ...formData, checklist: e.target.value })}
+              rows={3} placeholder="Liste de vérification (une par ligne)"
+              className="w-full px-4 py-2 border border-slate-300 rounded-xl focus:ring-2 focus:ring-primary-500" />
+          </div>
+
+          {/* Visible par (Autocomplete) */}
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">Visible par</label>
+            <div className="relative">
+              <input type="text" value={visibleBySearch}
+                onChange={(e) => { setVisibleBySearch(e.target.value); setShowVisibleByDropdown(true) }}
+                onFocus={() => setShowVisibleByDropdown(true)}
+                placeholder="Rechercher utilisateurs ou groupes..."
+                className="w-full px-4 py-2 border border-slate-300 rounded-xl focus:ring-2 focus:ring-primary-500" />
+              {showVisibleByDropdown && visibleBySearch && (
+                <div className="absolute z-10 w-full mt-1 bg-white border border-slate-200 rounded-xl shadow-lg max-h-48 overflow-y-auto">
+                  {filteredUsersGroups.length === 0 ? (
+                    <p className="px-4 py-2 text-sm text-slate-500">Aucun résultat</p>
+                  ) : (
+                    filteredUsersGroups.slice(0, 10).map(item => (
+                      <button key={item.id} onClick={() => addVisibleBy(item)}
+                        className="w-full px-4 py-2 text-left hover:bg-slate-50 flex items-center gap-2">
+                        {item.type === 'user' ? <User className="w-4 h-4 text-slate-400" /> : <Users className="w-4 h-4 text-slate-400" />}
+                        <span className="text-sm text-slate-700">{item.name}</span>
+                        <span className="text-xs text-slate-400">{item.type === 'user' ? 'Utilisateur' : 'Groupe'}</span>
+                      </button>
+                    ))
                   )}
-                  <button
-                    onClick={handleSaveGroup}
-                    className="px-3 py-1.5 text-sm bg-primary-600 text-white rounded-lg hover:bg-primary-700"
-                  >
-                    {editingGroup ? 'Enregistrer' : 'Ajouter'}
-                  </button>
                 </div>
+              )}
+            </div>
+            {formData.visibleBy.length > 0 && (
+              <div className="flex flex-wrap gap-2 mt-2">
+                {formData.visibleBy.map(id => (
+                  <span key={id} className="inline-flex items-center gap-1 px-2 py-1 bg-slate-100 text-slate-700 rounded-lg text-sm">
+                    {getItemName(id)}
+                    <button onClick={() => removeVisibleBy(id)} className="hover:text-red-500"><X className="w-3 h-3" /></button>
+                  </span>
+                ))}
               </div>
-              {/* Groups List */}
-              <div className="space-y-2">
-                {groups.length === 0 ? (
-                  <p className="text-center text-slate-500 py-8">Aucun groupe défini</p>
-                ) : (
-                  groups.map(group => (
-                    <div key={group.id} className="flex items-center justify-between p-3 border border-slate-200 rounded-lg">
-                      <div>
-                        <p className="font-medium text-slate-800">{group.name}</p>
-                        <p className="text-xs text-slate-500">{group.code}</p>
+            )}
+          </div>
+
+          {/* Déclenchement */}
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-2">Déclenchement</label>
+            <div className="flex gap-4">
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input type="radio" name="trigger" checked={formData.triggerType === 'MANUAL'}
+                  onChange={() => setFormData({ ...formData, triggerType: 'MANUAL' })}
+                  className="text-primary-600 focus:ring-primary-500" />
+                <span className="text-sm text-slate-700">Manuel</span>
+              </label>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input type="radio" name="trigger" checked={formData.triggerType === 'AUTOMATIC'}
+                  onChange={() => setFormData({ ...formData, triggerType: 'AUTOMATIC' })}
+                  className="text-primary-600 focus:ring-primary-500" />
+                <span className="text-sm text-slate-700">Automatique</span>
+              </label>
+            </div>
+
+            {formData.triggerType === 'AUTOMATIC' && (
+              <div className="mt-4 p-4 bg-amber-50 border border-amber-200 rounded-xl space-y-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-1">Fréquence</label>
+                    <select value={formData.triggerConfig.frequency}
+                      onChange={(e) => setFormData({ ...formData, triggerConfig: { ...formData.triggerConfig, frequency: e.target.value as any } })}
+                      className="w-full px-3 py-2 border border-slate-300 rounded-lg">
+                      <option value="daily">Quotidien</option>
+                      <option value="weekly">Hebdomadaire</option>
+                      <option value="monthly">Mensuel</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-1">Heure</label>
+                    <input type="time" value={formData.triggerConfig.time}
+                      onChange={(e) => setFormData({ ...formData, triggerConfig: { ...formData.triggerConfig, time: e.target.value } })}
+                      className="w-full px-3 py-2 border border-slate-300 rounded-lg" />
+                  </div>
+                </div>
+                {formData.triggerConfig.frequency === 'weekly' && (
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-1">Jour de la semaine</label>
+                    <select value={formData.triggerConfig.dayOfWeek}
+                      onChange={(e) => setFormData({ ...formData, triggerConfig: { ...formData.triggerConfig, dayOfWeek: parseInt(e.target.value) } })}
+                      className="w-full px-3 py-2 border border-slate-300 rounded-lg">
+                      {['Dimanche', 'Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi'].map((d, i) => (
+                        <option key={i} value={i}>{d}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+                {formData.triggerConfig.frequency === 'monthly' && (
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-1">Jour du mois</label>
+                    <input type="number" min="1" max="31" value={formData.triggerConfig.dayOfMonth}
+                      onChange={(e) => setFormData({ ...formData, triggerConfig: { ...formData.triggerConfig, dayOfMonth: parseInt(e.target.value) } })}
+                      className="w-full px-3 py-2 border border-slate-300 rounded-lg" />
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Actions */}
+          <div className="flex justify-end gap-3 pt-4 border-t border-slate-200">
+            <button onClick={handleBack} className="px-4 py-2 border border-slate-300 text-slate-700 rounded-xl hover:bg-slate-50">Annuler</button>
+            <button onClick={handleSaveProcedure} className="px-4 py-2 bg-primary-600 text-white rounded-xl hover:bg-primary-700 flex items-center gap-2">
+              <Save className="w-4 h-4" /> Enregistrer
+            </button>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  // STEPS VIEW
+  if (currentView === 'steps') {
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-display font-bold text-slate-800">Étapes de la procédure</h1>
+            <p className="text-slate-500 mt-1">{selectedProcedure?.name}</p>
+          </div>
+          <button onClick={handleBack} className="px-4 py-2 border border-slate-300 text-slate-700 rounded-xl hover:bg-slate-50 flex items-center gap-2">
+            <ArrowLeft className="w-4 h-4" /> Retour
+          </button>
+        </div>
+
+        <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
+          <div className="flex justify-between items-center mb-4">
+            <p className="text-sm text-slate-500">Glissez-déposez pour réorganiser les étapes</p>
+            <button onClick={addStep} className="px-3 py-1.5 text-sm bg-primary-600 text-white rounded-lg hover:bg-primary-700 flex items-center gap-1">
+              <Plus className="w-4 h-4" /> Ajouter une étape
+            </button>
+          </div>
+
+          {steps.length === 0 ? (
+            <div className="text-center py-12 text-slate-500">
+              <Layers className="w-16 h-16 mx-auto mb-4 text-slate-300" />
+              <p>Aucune étape définie</p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {steps.map((step, index) => (
+                <div key={index} draggable onDragStart={() => handleDragStart(index)} onDragOver={(e) => handleDragOver(e, index)} onDragEnd={handleDragEnd}
+                  className={`p-4 border rounded-xl bg-white transition-all ${draggedStep === index ? 'border-primary-500 shadow-lg' : 'border-slate-200'}`}>
+                  <div className="flex items-start gap-3">
+                    <div className="cursor-grab active:cursor-grabbing p-1 hover:bg-slate-100 rounded">
+                      <GripVertical className="w-5 h-5 text-slate-400" />
+                    </div>
+                    <div className="w-8 h-8 rounded-full bg-primary-100 text-primary-600 flex items-center justify-center font-bold text-sm flex-shrink-0">
+                      {step.stepNumber}
+                    </div>
+                    <div className="flex-1 space-y-3">
+                      <div className="grid grid-cols-2 gap-3">
+                        <input type="text" value={step.name} onChange={(e) => updateStep(index, 'name', e.target.value)}
+                          placeholder="Nom de l'étape" className="px-3 py-2 border border-slate-300 rounded-lg" />
+                        <div className="flex items-center gap-2">
+                          <Clock className="w-4 h-4 text-slate-400" />
+                          <input type="number" value={step.durationHours || ''} onChange={(e) => updateStep(index, 'durationHours', e.target.value ? parseInt(e.target.value) : undefined)}
+                            placeholder="Durée (h)" className="flex-1 px-3 py-2 border border-slate-300 rounded-lg" />
+                        </div>
                       </div>
-                      <div className="flex gap-1">
-                        <button
-                          onClick={() => { setEditingGroup(group); setGroupFormData({ code: group.code, name: group.name, description: group.description || '', isActive: group.isActive }) }}
-                          className="p-1.5 text-slate-400 hover:text-primary-600 hover:bg-primary-50 rounded"
-                        >
-                          <Edit3 className="w-4 h-4" />
-                        </button>
-                        <button
-                          onClick={() => handleDeleteGroup(group.id)}
-                          className="p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded"
-                        >
-                          <Trash2 className="w-4 h-4" />
+
+                      {/* Responsables autocomplete */}
+                      <div>
+                        <label className="block text-xs font-medium text-slate-500 mb-1">Responsables</label>
+                        <div className="relative">
+                          <input type="text" value={showResponsibleDropdown === index ? responsibleSearch : ''}
+                            onChange={(e) => { setResponsibleSearch(e.target.value); setShowResponsibleDropdown(index) }}
+                            onFocus={() => setShowResponsibleDropdown(index)}
+                            placeholder="Ajouter un responsable..."
+                            className="w-full px-3 py-1.5 text-sm border border-slate-300 rounded-lg" />
+                          {showResponsibleDropdown === index && responsibleSearch && (
+                            <div className="absolute z-10 w-full mt-1 bg-white border border-slate-200 rounded-lg shadow-lg max-h-32 overflow-y-auto">
+                              {filteredUsersGroups.slice(0, 5).map(item => (
+                                <button key={item.id} onClick={() => addResponsible(index, item)}
+                                  className="w-full px-3 py-1.5 text-left text-sm hover:bg-slate-50 flex items-center gap-2">
+                                  {item.type === 'user' ? <User className="w-3 h-3" /> : <Users className="w-3 h-3" />}
+                                  {item.name}
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                        {step.responsibles && step.responsibles.length > 0 && (
+                          <div className="flex flex-wrap gap-1 mt-1">
+                            {step.responsibles.map(id => (
+                              <span key={id} className="inline-flex items-center gap-1 px-2 py-0.5 bg-slate-100 rounded text-xs">
+                                {getItemName(id)}
+                                <button onClick={() => removeResponsible(index, id)} className="hover:text-red-500"><X className="w-3 h-3" /></button>
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Operations */}
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs text-slate-500">{step.operations?.length || 0} opération(s)</span>
+                        <button onClick={() => openOperationsModal(index)}
+                          className="text-xs text-primary-600 hover:text-primary-700 font-medium flex items-center gap-1">
+                          <Settings className="w-3 h-3" /> Gérer les opérations
                         </button>
                       </div>
                     </div>
-                  ))
-                )}
+                    <button onClick={() => removeStep(index)} className="p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded">
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <div className="flex justify-end gap-3 pt-4 mt-4 border-t border-slate-200">
+            <button onClick={handleBack} className="px-4 py-2 border border-slate-300 text-slate-700 rounded-xl hover:bg-slate-50">Annuler</button>
+            <button onClick={handleSaveSteps} className="px-4 py-2 bg-primary-600 text-white rounded-xl hover:bg-primary-700 flex items-center gap-2">
+              <Save className="w-4 h-4" /> Enregistrer les étapes
+            </button>
+          </div>
+        </div>
+
+        {/* Operations Modal */}
+        {showOperationsModal && editingStepIndex !== null && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl max-h-[80vh] overflow-hidden flex flex-col">
+              <div className="p-6 border-b border-slate-200 flex items-center justify-between">
+                <h2 className="text-xl font-display font-bold text-slate-800">
+                  Opérations - Étape {steps[editingStepIndex]?.stepNumber}
+                </h2>
+                <button onClick={() => setShowOperationsModal(false)} className="p-2 hover:bg-slate-100 rounded-lg">
+                  <X className="w-5 h-5 text-slate-500" />
+                </button>
+              </div>
+              <div className="flex-1 overflow-y-auto p-6">
+                {/* Add operation form */}
+                <div className="mb-6 p-4 bg-slate-50 rounded-xl space-y-3">
+                  <h3 className="font-medium text-slate-700">Nouvelle opération</h3>
+                  <input type="text" value={operationForm.name} onChange={(e) => setOperationForm({ ...operationForm, name: e.target.value })}
+                    placeholder="Nom de l'opération" className="w-full px-3 py-2 border border-slate-300 rounded-lg" />
+                  <input type="text" value={operationForm.description} onChange={(e) => setOperationForm({ ...operationForm, description: e.target.value })}
+                    placeholder="Description" className="w-full px-3 py-2 border border-slate-300 rounded-lg" />
+                  <div className="flex items-center gap-3">
+                    <select value={operationForm.formId} onChange={(e) => setOperationForm({ ...operationForm, formId: e.target.value })}
+                      className="flex-1 px-3 py-2 border border-slate-300 rounded-lg">
+                      <option value="">Aucun formulaire</option>
+                      {forms.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
+                    </select>
+                    <button onClick={addOperation} disabled={!operationForm.name}
+                      className="px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 disabled:opacity-50">
+                      Ajouter
+                    </button>
+                  </div>
+                </div>
+
+                {/* Operations list */}
+                <div className="space-y-2">
+                  {(steps[editingStepIndex]?.operations || []).length === 0 ? (
+                    <p className="text-center text-slate-500 py-4">Aucune opération</p>
+                  ) : (
+                    steps[editingStepIndex].operations?.map((op, opIndex) => (
+                      <div key={opIndex} className="flex items-center justify-between p-3 border border-slate-200 rounded-lg">
+                        <div>
+                          <p className="font-medium text-slate-800">{op.name}</p>
+                          {op.description && <p className="text-xs text-slate-500">{op.description}</p>}
+                          {op.formName && (
+                            <span className="inline-flex items-center gap-1 text-xs text-primary-600 mt-1">
+                              <FileText className="w-3 h-3" /> {op.formName}
+                            </span>
+                          )}
+                        </div>
+                        <button onClick={() => removeOperation(editingStepIndex, opIndex)}
+                          className="p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded">
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+              <div className="p-4 border-t border-slate-200 flex justify-end">
+                <button onClick={() => setShowOperationsModal(false)} className="px-4 py-2 bg-primary-600 text-white rounded-xl hover:bg-primary-700">
+                  Terminé
+                </button>
               </div>
             </div>
           </div>
-        </div>
-      )}
-    </div>
-  )
+        )}
+      </div>
+    )
+  }
+
+  return null
 }
 
 /* ============================================

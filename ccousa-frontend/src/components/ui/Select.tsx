@@ -233,12 +233,13 @@ export const MultiSelect = forwardRef<HTMLDivElement, MultiSelectProps>(
       helperText,
       error,
       disabled,
-      size = 'md',
+      size: _size = 'md',
       variant = 'default',
       className,
     },
     ref
   ) => {
+    void _size; // Size prop available for future use
     const selectedOptions = options.filter((opt) => value.includes(opt.value));
 
     const toggleOption = (optValue: string) => {

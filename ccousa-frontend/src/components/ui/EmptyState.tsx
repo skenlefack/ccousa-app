@@ -4,9 +4,7 @@ import {
   Inbox,
   Search,
   FileX,
-  Users,
   AlertCircle,
-  FolderOpen,
   Database,
   Settings
 } from 'lucide-react';
@@ -150,26 +148,30 @@ export const EmptyState: React.FC<EmptyStateProps> = ({
 export const NoResultsEmpty: React.FC<{
   searchTerm?: string;
   onClear?: () => void;
-}> = ({ searchTerm, onClear }) => (
-  <EmptyState
-    icon={<Search className="w-full h-full" />}
-    title="Aucun résultat trouvé"
-    description={
-      searchTerm
-        ? `Aucun résultat pour "${searchTerm}". Essayez avec d'autres termes.`
-        : "Aucun élément ne correspond à vos critères de recherche."
-    }
-    action={
-      onClear
-        ? {
-            label: 'Effacer la recherche',
-            onClick: onClear,
-          }
-        : undefined
-    }
-    variant="illustrated"
-  />
-);
+  onReset?: () => void; // Alias for onClear
+}> = ({ searchTerm, onClear, onReset }) => {
+  const handleClear = onClear || onReset;
+  return (
+    <EmptyState
+      icon={<Search className="w-full h-full" />}
+      title="Aucun résultat trouvé"
+      description={
+        searchTerm
+          ? `Aucun résultat pour "${searchTerm}". Essayez avec d'autres termes.`
+          : "Aucun élément ne correspond à vos critères de recherche."
+      }
+      action={
+        handleClear
+          ? {
+              label: 'Effacer la recherche',
+              onClick: handleClear,
+            }
+          : undefined
+      }
+      variant="illustrated"
+    />
+  );
+};
 
 export const NoDataEmpty: React.FC<{
   onAdd?: () => void;

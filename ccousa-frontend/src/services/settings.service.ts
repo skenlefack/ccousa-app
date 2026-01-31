@@ -1,4 +1,4 @@
-import api, { ApiResponse, PaginatedResponse } from './api';
+import api, { ApiResponse } from './api';
 import type {
   SystemConfiguration,
   EventCategory,
