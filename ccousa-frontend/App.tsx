@@ -6054,8 +6054,9 @@ function ProceduresPage() {
   const [deletingProcedure, setDeletingProcedure] = useState<Procedure | null>(null)
 
   const getHeaders = () => {
-    const token = localStorage.getItem('ccousa_token')
-    return { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` }
+    const authData = localStorage.getItem('auth_token')
+    const token = authData ? JSON.parse(authData).token : null
+    return { 'Content-Type': 'application/json', ...(token && { 'Authorization': `Bearer ${token}` }) }
   }
 
   // Load data
@@ -6092,13 +6093,13 @@ function ProceduresPage() {
         fetch(`${API_URL}/api/users`, { headers: getHeaders() }),
         fetch(`${API_URL}/api/users/groups/list`, { headers: getHeaders() })
       ])
-      const usersData = usersRes.ok ? await usersRes.json() : { data: { items: [] } }
+      const usersData = usersRes.ok ? await usersRes.json() : { data: [] }
       const groupsData = groupsRes.ok ? await groupsRes.json() : { data: [] }
 
-      const users = (usersData.data?.items || []).map((u: any) => ({
-        id: u.id, type: 'user' as const, name: `${u.firstName} ${u.lastName}`, email: u.email
+      const users = (usersData.data || []).map((u: any) => ({
+        id: u.id, type: 'user' as const, name: `${u.first_name} ${u.last_name}`, email: u.email
       }))
-      const groups = (groupsData.data || groupsData || []).map((g: any) => ({
+      const groups = (groupsData.data || []).map((g: any) => ({
         id: g.id, type: 'group' as const, name: g.name
       }))
       setUsersAndGroups([...users, ...groups])
@@ -6429,32 +6430,70 @@ function ProceduresPage() {
         </div>
 
         <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 space-y-6">
-          {/* Nom */}
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">Nom de la procédure *</label>
-            <input type="text" value={formData.name} onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-              placeholder="Ex: Investigation foyer épidémique"
-              className="w-full px-4 py-2 border border-slate-300 rounded-xl focus:ring-2 focus:ring-primary-500" />
+          {/* Nom + Catégorie sur la même ligne */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">Nom de la procédure *</label>
+              <input type="text" value={formData.name} onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                placeholder="Ex: Investigation foyer épidémique"
+                className="w-full px-4 py-2 border border-slate-300 rounded-xl focus:ring-2 focus:ring-primary-500" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">Catégorie d'événement</label>
+              <select value={formData.categoryId} onChange={(e) => setFormData({ ...formData, categoryId: e.target.value })}
+                className="w-full px-4 py-2 border border-slate-300 rounded-xl focus:ring-2 focus:ring-primary-500">
+                <option value="">Sélectionner une catégorie</option>
+                {categories.map(cat => (
+                  <option key={cat.id} value={cat.id}>{cat.name}</option>
+                ))}
+              </select>
+            </div>
           </div>
 
-          {/* Catégorie */}
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">Catégorie d'événement</label>
-            <select value={formData.categoryId} onChange={(e) => setFormData({ ...formData, categoryId: e.target.value })}
-              className="w-full px-4 py-2 border border-slate-300 rounded-xl focus:ring-2 focus:ring-primary-500">
-              <option value="">Sélectionner une catégorie</option>
-              {categories.map(cat => (
-                <option key={cat.id} value={cat.id}>{cat.name}</option>
-              ))}
-            </select>
-          </div>
-
-          {/* Mots clés */}
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">Mots clés</label>
-            <input type="text" value={formData.keywords} onChange={(e) => setFormData({ ...formData, keywords: e.target.value })}
-              placeholder="Ex: épidémie, investigation, terrain"
-              className="w-full px-4 py-2 border border-slate-300 rounded-xl focus:ring-2 focus:ring-primary-500" />
+          {/* Mots clés + Visible par sur la même ligne */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">Mots clés</label>
+              <input type="text" value={formData.keywords} onChange={(e) => setFormData({ ...formData, keywords: e.target.value })}
+                placeholder="Ex: épidémie, investigation, terrain"
+                className="w-full px-4 py-2 border border-slate-300 rounded-xl focus:ring-2 focus:ring-primary-500" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">Visible par</label>
+              <div className="relative">
+                <input type="text" value={visibleBySearch}
+                  onChange={(e) => { setVisibleBySearch(e.target.value); setShowVisibleByDropdown(true) }}
+                  onFocus={() => setShowVisibleByDropdown(true)}
+                  placeholder="Rechercher utilisateurs ou groupes..."
+                  className="w-full px-4 py-2 border border-slate-300 rounded-xl focus:ring-2 focus:ring-primary-500" />
+                {showVisibleByDropdown && visibleBySearch && (
+                  <div className="absolute z-10 w-full mt-1 bg-white border border-slate-200 rounded-xl shadow-lg max-h-48 overflow-y-auto">
+                    {filteredUsersGroups.length === 0 ? (
+                      <p className="px-4 py-2 text-sm text-slate-500">Aucun résultat</p>
+                    ) : (
+                      filteredUsersGroups.slice(0, 10).map(item => (
+                        <button key={item.id} onClick={() => addVisibleBy(item)}
+                          className="w-full px-4 py-2 text-left hover:bg-slate-50 flex items-center gap-2">
+                          {item.type === 'user' ? <User className="w-4 h-4 text-slate-400" /> : <Users className="w-4 h-4 text-slate-400" />}
+                          <span className="text-sm text-slate-700">{item.name}</span>
+                          <span className="text-xs text-slate-400">{item.type === 'user' ? 'Utilisateur' : 'Groupe'}</span>
+                        </button>
+                      ))
+                    )}
+                  </div>
+                )}
+              </div>
+              {formData.visibleBy.length > 0 && (
+                <div className="flex flex-wrap gap-2 mt-2">
+                  {formData.visibleBy.map(id => (
+                    <span key={id} className="inline-flex items-center gap-1 px-2 py-1 bg-slate-100 text-slate-700 rounded-lg text-sm">
+                      {getItemName(id)}
+                      <button onClick={() => removeVisibleBy(id)} className="hover:text-red-500"><X className="w-3 h-3" /></button>
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
 
           {/* Check liste */}
@@ -6463,44 +6502,6 @@ function ProceduresPage() {
             <textarea value={formData.checklist} onChange={(e) => setFormData({ ...formData, checklist: e.target.value })}
               rows={3} placeholder="Liste de vérification (une par ligne)"
               className="w-full px-4 py-2 border border-slate-300 rounded-xl focus:ring-2 focus:ring-primary-500" />
-          </div>
-
-          {/* Visible par (Autocomplete) */}
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">Visible par</label>
-            <div className="relative">
-              <input type="text" value={visibleBySearch}
-                onChange={(e) => { setVisibleBySearch(e.target.value); setShowVisibleByDropdown(true) }}
-                onFocus={() => setShowVisibleByDropdown(true)}
-                placeholder="Rechercher utilisateurs ou groupes..."
-                className="w-full px-4 py-2 border border-slate-300 rounded-xl focus:ring-2 focus:ring-primary-500" />
-              {showVisibleByDropdown && visibleBySearch && (
-                <div className="absolute z-10 w-full mt-1 bg-white border border-slate-200 rounded-xl shadow-lg max-h-48 overflow-y-auto">
-                  {filteredUsersGroups.length === 0 ? (
-                    <p className="px-4 py-2 text-sm text-slate-500">Aucun résultat</p>
-                  ) : (
-                    filteredUsersGroups.slice(0, 10).map(item => (
-                      <button key={item.id} onClick={() => addVisibleBy(item)}
-                        className="w-full px-4 py-2 text-left hover:bg-slate-50 flex items-center gap-2">
-                        {item.type === 'user' ? <User className="w-4 h-4 text-slate-400" /> : <Users className="w-4 h-4 text-slate-400" />}
-                        <span className="text-sm text-slate-700">{item.name}</span>
-                        <span className="text-xs text-slate-400">{item.type === 'user' ? 'Utilisateur' : 'Groupe'}</span>
-                      </button>
-                    ))
-                  )}
-                </div>
-              )}
-            </div>
-            {formData.visibleBy.length > 0 && (
-              <div className="flex flex-wrap gap-2 mt-2">
-                {formData.visibleBy.map(id => (
-                  <span key={id} className="inline-flex items-center gap-1 px-2 py-1 bg-slate-100 text-slate-700 rounded-lg text-sm">
-                    {getItemName(id)}
-                    <button onClick={() => removeVisibleBy(id)} className="hover:text-red-500"><X className="w-3 h-3" /></button>
-                  </span>
-                ))}
-              </div>
-            )}
           </div>
 
           {/* Déclenchement */}
