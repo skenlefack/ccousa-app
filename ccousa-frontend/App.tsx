@@ -6759,6 +6759,361 @@ function ProceduresPage() {
 }
 
 /* ============================================
+   EVENT CATEGORIES PAGE
+   ============================================ */
+interface EventCategoryData {
+  id: string
+  code: string
+  name: string
+  description?: string
+  color: string
+  icon?: string
+  isActive: boolean
+  sortOrder: number
+}
+
+function EventCategoriesPage() {
+  const { t } = useTranslation()
+  const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
+
+  const [categories, setCategories] = useState<EventCategoryData[]>([])
+  const [loading, setLoading] = useState(true)
+  const [searchTerm, setSearchTerm] = useState('')
+  const [showInactive, setShowInactive] = useState(false)
+
+  // Modal state
+  const [showModal, setShowModal] = useState(false)
+  const [editingCategory, setEditingCategory] = useState<EventCategoryData | null>(null)
+  const [showDeleteModal, setShowDeleteModal] = useState(false)
+  const [deletingCategory, setDeletingCategory] = useState<EventCategoryData | null>(null)
+
+  // Form state
+  const [formData, setFormData] = useState({
+    code: '',
+    name: '',
+    description: '',
+    color: '#10b981',
+    icon: 'tag',
+    isActive: true
+  })
+
+  const getHeaders = () => {
+    const authData = localStorage.getItem('auth_token')
+    const token = authData ? JSON.parse(authData).token : null
+    return { 'Content-Type': 'application/json', ...(token && { 'Authorization': `Bearer ${token}` }) }
+  }
+
+  const loadCategories = async () => {
+    try {
+      setLoading(true)
+      const response = await fetch(`${API_URL}/api/config/event-categories`, { headers: getHeaders() })
+      if (response.ok) {
+        const data = await response.json()
+        setCategories(data.data || data || [])
+      }
+    } catch (error) {
+      console.error('Error loading categories:', error)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    loadCategories()
+  }, [])
+
+  const filteredCategories = categories.filter(cat => {
+    if (!showInactive && !cat.isActive) return false
+    if (searchTerm) {
+      const search = searchTerm.toLowerCase()
+      return cat.name.toLowerCase().includes(search) || cat.code.toLowerCase().includes(search)
+    }
+    return true
+  })
+
+  const handleCreate = () => {
+    setEditingCategory(null)
+    setFormData({ code: '', name: '', description: '', color: '#10b981', icon: 'tag', isActive: true })
+    setShowModal(true)
+  }
+
+  const handleEdit = (cat: EventCategoryData) => {
+    setEditingCategory(cat)
+    setFormData({
+      code: cat.code,
+      name: cat.name,
+      description: cat.description || '',
+      color: cat.color,
+      icon: cat.icon || 'tag',
+      isActive: cat.isActive
+    })
+    setShowModal(true)
+  }
+
+  const handleSave = async () => {
+    if (!formData.code || !formData.name) return
+    try {
+      const payload = {
+        ...formData,
+        sortOrder: editingCategory?.sortOrder || categories.length + 1
+      }
+      const url = editingCategory
+        ? `${API_URL}/api/config/event-categories/${editingCategory.id}`
+        : `${API_URL}/api/config/event-categories`
+      const response = await fetch(url, {
+        method: editingCategory ? 'PUT' : 'POST',
+        headers: getHeaders(),
+        body: JSON.stringify(payload)
+      })
+      if (response.ok) {
+        loadCategories()
+        setShowModal(false)
+      }
+    } catch (error) {
+      console.error('Error saving category:', error)
+    }
+  }
+
+  const handleDelete = async () => {
+    if (!deletingCategory) return
+    try {
+      const response = await fetch(`${API_URL}/api/config/event-categories/${deletingCategory.id}`, {
+        method: 'DELETE',
+        headers: getHeaders()
+      })
+      if (response.ok) {
+        loadCategories()
+        setShowDeleteModal(false)
+        setDeletingCategory(null)
+      }
+    } catch (error) {
+      console.error('Error deleting category:', error)
+    }
+  }
+
+  const iconOptions = [
+    { value: 'alert-triangle', label: 'Alerte' },
+    { value: 'bug', label: 'Bug' },
+    { value: 'microscope', label: 'Laboratoire' },
+    { value: 'shield', label: 'Biosécurité' },
+    { value: 'syringe', label: 'Vaccination' },
+    { value: 'eye', label: 'Surveillance' },
+    { value: 'activity', label: 'Activité' },
+    { value: 'building', label: 'Administration' },
+    { value: 'tag', label: 'Autre' }
+  ]
+
+  const colorOptions = ['#10b981', '#3b82f6', '#8b5cf6', '#f59e0b', '#ef4444', '#ec4899', '#06b6d4', '#84cc16']
+
+  return (
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-display font-bold text-slate-800">Catégories d'événements</h1>
+          <p className="text-slate-500">Gérez les types d'événements sanitaires</p>
+        </div>
+        <button onClick={handleCreate} className="px-4 py-2 bg-primary-600 text-white rounded-xl hover:bg-primary-700 flex items-center gap-2">
+          <Plus className="w-4 h-4" /> Nouvelle catégorie
+        </button>
+      </div>
+
+      {/* Filters */}
+      <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-4">
+        <div className="flex flex-col sm:flex-row gap-4">
+          <div className="flex-1 relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+            <input type="text" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)}
+              placeholder="Rechercher une catégorie..."
+              className="w-full pl-10 pr-4 py-2 border border-slate-300 rounded-xl focus:ring-2 focus:ring-primary-500" />
+          </div>
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input type="checkbox" checked={showInactive} onChange={(e) => setShowInactive(e.target.checked)}
+              className="rounded text-primary-600 focus:ring-primary-500" />
+            <span className="text-sm text-slate-600">Afficher inactifs</span>
+          </label>
+        </div>
+      </div>
+
+      {/* Categories Grid */}
+      {loading ? (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {[1, 2, 3, 4, 5, 6].map(i => (
+            <div key={i} className="h-40 bg-slate-100 rounded-2xl animate-pulse" />
+          ))}
+        </div>
+      ) : filteredCategories.length === 0 ? (
+        <div className="text-center py-12">
+          <div className="w-16 h-16 bg-slate-100 rounded-2xl flex items-center justify-center mx-auto mb-4">
+            <AlertTriangle className="w-8 h-8 text-slate-400" />
+          </div>
+          <p className="text-slate-500 mb-4">Aucune catégorie trouvée</p>
+          <button onClick={handleCreate} className="px-4 py-2 bg-primary-600 text-white rounded-xl hover:bg-primary-700">
+            Créer une catégorie
+          </button>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {filteredCategories.map(cat => (
+            <div key={cat.id} className={`bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden group ${!cat.isActive ? 'opacity-60' : ''}`}>
+              <div className="h-2" style={{ backgroundColor: cat.color }} />
+              <div className="p-4">
+                <div className="flex items-start justify-between mb-3">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2.5 rounded-xl" style={{ backgroundColor: `${cat.color}20`, color: cat.color }}>
+                      <AlertTriangle className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <h3 className="font-semibold text-slate-800">{cat.name}</h3>
+                      <p className="text-xs text-slate-500 font-mono">{cat.code}</p>
+                    </div>
+                  </div>
+                  <span className={`px-2 py-1 text-xs rounded-full ${cat.isActive ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-500'}`}>
+                    {cat.isActive ? 'Actif' : 'Inactif'}
+                  </span>
+                </div>
+                {cat.description && (
+                  <p className="text-sm text-slate-500 mb-4 line-clamp-2">{cat.description}</p>
+                )}
+                <div className="flex items-center justify-between pt-3 border-t border-slate-100">
+                  <div className="flex items-center gap-2">
+                    <div className="w-4 h-4 rounded-full" style={{ backgroundColor: cat.color }} />
+                    <span className="text-xs text-slate-500">{cat.color}</span>
+                  </div>
+                  <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <button onClick={() => handleEdit(cat)} className="p-2 text-slate-400 hover:text-primary-600 hover:bg-primary-50 rounded-lg">
+                      <Edit3 className="w-4 h-4" />
+                    </button>
+                    <button onClick={() => { setDeletingCategory(cat); setShowDeleteModal(true) }} className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg">
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Create/Edit Modal */}
+      {showModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg">
+            <div className="p-6 border-b border-slate-200">
+              <h2 className="text-xl font-semibold text-slate-800">
+                {editingCategory ? 'Modifier la catégorie' : 'Nouvelle catégorie'}
+              </h2>
+            </div>
+            <div className="p-6 space-y-4">
+              {/* Preview */}
+              <div className="p-4 bg-slate-50 rounded-xl">
+                <p className="text-xs text-slate-500 mb-2">Aperçu</p>
+                <div className="flex items-center gap-3">
+                  <div className="p-2.5 rounded-xl" style={{ backgroundColor: `${formData.color}20`, color: formData.color }}>
+                    <AlertTriangle className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h4 className="font-semibold text-slate-800">{formData.name || 'Nom de la catégorie'}</h4>
+                    <p className="text-xs text-slate-500 font-mono">{formData.code || 'CODE'}</p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Code *</label>
+                  <input type="text" value={formData.code}
+                    onChange={(e) => setFormData({ ...formData, code: e.target.value.toUpperCase() })}
+                    placeholder="OUTBREAK"
+                    className="w-full px-4 py-2 border border-slate-300 rounded-xl focus:ring-2 focus:ring-primary-500" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Nom *</label>
+                  <input type="text" value={formData.name}
+                    onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                    placeholder="Foyer épidémique"
+                    className="w-full px-4 py-2 border border-slate-300 rounded-xl focus:ring-2 focus:ring-primary-500" />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Description</label>
+                <textarea value={formData.description}
+                  onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                  rows={2} placeholder="Description de la catégorie..."
+                  className="w-full px-4 py-2 border border-slate-300 rounded-xl focus:ring-2 focus:ring-primary-500" />
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Couleur</label>
+                  <div className="flex flex-wrap gap-2">
+                    {colorOptions.map(color => (
+                      <button key={color} type="button" onClick={() => setFormData({ ...formData, color })}
+                        className={`w-8 h-8 rounded-lg transition-all ${formData.color === color ? 'ring-2 ring-offset-2 ring-primary-500 scale-110' : 'hover:scale-105'}`}
+                        style={{ backgroundColor: color }} />
+                    ))}
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Icône</label>
+                  <select value={formData.icon} onChange={(e) => setFormData({ ...formData, icon: e.target.value })}
+                    className="w-full px-4 py-2 border border-slate-300 rounded-xl focus:ring-2 focus:ring-primary-500">
+                    {iconOptions.map(opt => (
+                      <option key={opt.value} value={opt.value}>{opt.label}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between p-4 bg-slate-50 rounded-xl">
+                <div>
+                  <p className="font-medium text-slate-800">Catégorie active</p>
+                  <p className="text-sm text-slate-500">Les catégories inactives ne sont pas disponibles</p>
+                </div>
+                <button type="button" onClick={() => setFormData({ ...formData, isActive: !formData.isActive })}
+                  className={`w-12 h-6 rounded-full transition-colors ${formData.isActive ? 'bg-primary-600' : 'bg-slate-300'}`}>
+                  <div className={`w-5 h-5 bg-white rounded-full shadow transition-transform ${formData.isActive ? 'translate-x-6' : 'translate-x-0.5'}`} />
+                </button>
+              </div>
+            </div>
+            <div className="p-6 border-t border-slate-200 flex justify-end gap-3">
+              <button onClick={() => setShowModal(false)} className="px-4 py-2 border border-slate-300 text-slate-700 rounded-xl hover:bg-slate-50">
+                Annuler
+              </button>
+              <button onClick={handleSave} className="px-4 py-2 bg-primary-600 text-white rounded-xl hover:bg-primary-700">
+                {editingCategory ? 'Enregistrer' : 'Créer'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Modal */}
+      {showDeleteModal && deletingCategory && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-6 text-center">
+            <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
+              <AlertTriangle className="w-8 h-8 text-red-600" />
+            </div>
+            <h3 className="text-lg font-semibold text-slate-800 mb-2">Supprimer la catégorie</h3>
+            <p className="text-slate-500 mb-6">Supprimer "{deletingCategory.name}" ? Cette action est irréversible.</p>
+            <div className="flex gap-3 justify-center">
+              <button onClick={() => setShowDeleteModal(false)} className="px-4 py-2 border border-slate-300 text-slate-700 rounded-xl hover:bg-slate-50">
+                Annuler
+              </button>
+              <button onClick={handleDelete} className="px-4 py-2 bg-red-600 text-white rounded-xl hover:bg-red-700">
+                Supprimer
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+/* ============================================
    PLACEHOLDER PAGE
    ============================================ */
 function PlaceholderPage({ title }: { title: string }) {
@@ -6939,7 +7294,8 @@ function App() {
           {currentPage === 'users-rights' && <RightsManagementPage />}
           {currentPage === 'settings-forms' && <FormBuilderPage />}
           {currentPage === 'settings-procedures' && <ProceduresPage />}
-          {!['dashboard', 'my-profile', 'users-management', 'users-groups', 'users-rights', 'settings-forms', 'settings-procedures'].includes(currentPage) && (
+          {currentPage === 'settings-categories' && <EventCategoriesPage />}
+          {!['dashboard', 'my-profile', 'users-management', 'users-groups', 'users-rights', 'settings-forms', 'settings-procedures', 'settings-categories'].includes(currentPage) && (
             <PlaceholderPage title={pageTitles[currentPage] || currentPage} />
           )}
         </main>
