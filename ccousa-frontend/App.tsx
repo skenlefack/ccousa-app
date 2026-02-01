@@ -6461,18 +6461,26 @@ function ProceduresPage() {
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1">Visible par</label>
               <div className="relative">
-                <input type="text" value={visibleBySearch}
-                  onChange={(e) => { setVisibleBySearch(e.target.value); setShowVisibleByDropdown(true) }}
-                  onFocus={() => setShowVisibleByDropdown(true)}
-                  placeholder="Rechercher utilisateurs ou groupes..."
-                  className="w-full px-4 py-2 border border-slate-300 rounded-xl focus:ring-2 focus:ring-primary-500" />
+                <div className="flex flex-wrap items-center gap-1 min-h-[42px] px-2 py-1 border border-slate-300 rounded-xl focus-within:ring-2 focus-within:ring-primary-500 bg-white">
+                  {formData.visibleBy.map(id => (
+                    <span key={id} className="inline-flex items-center gap-1 px-2 py-0.5 bg-primary-100 text-primary-700 rounded-lg text-sm">
+                      {getItemName(id)}
+                      <button type="button" onClick={() => removeVisibleBy(id)} className="hover:text-red-500"><X className="w-3 h-3" /></button>
+                    </span>
+                  ))}
+                  <input type="text" value={visibleBySearch}
+                    onChange={(e) => { setVisibleBySearch(e.target.value); setShowVisibleByDropdown(true) }}
+                    onFocus={() => setShowVisibleByDropdown(true)}
+                    placeholder={formData.visibleBy.length === 0 ? "Rechercher..." : ""}
+                    className="flex-1 min-w-[100px] px-2 py-1 border-0 focus:ring-0 focus:outline-none text-sm" />
+                </div>
                 {showVisibleByDropdown && visibleBySearch && (
                   <div className="absolute z-10 w-full mt-1 bg-white border border-slate-200 rounded-xl shadow-lg max-h-48 overflow-y-auto">
                     {filteredUsersGroups.length === 0 ? (
                       <p className="px-4 py-2 text-sm text-slate-500">Aucun résultat</p>
                     ) : (
                       filteredUsersGroups.slice(0, 10).map(item => (
-                        <button key={item.id} onClick={() => addVisibleBy(item)}
+                        <button key={item.id} type="button" onClick={() => addVisibleBy(item)}
                           className="w-full px-4 py-2 text-left hover:bg-slate-50 flex items-center gap-2">
                           {item.type === 'user' ? <User className="w-4 h-4 text-slate-400" /> : <Users className="w-4 h-4 text-slate-400" />}
                           <span className="text-sm text-slate-700">{item.name}</span>
@@ -6483,16 +6491,6 @@ function ProceduresPage() {
                   </div>
                 )}
               </div>
-              {formData.visibleBy.length > 0 && (
-                <div className="flex flex-wrap gap-2 mt-2">
-                  {formData.visibleBy.map(id => (
-                    <span key={id} className="inline-flex items-center gap-1 px-2 py-1 bg-slate-100 text-slate-700 rounded-lg text-sm">
-                      {getItemName(id)}
-                      <button onClick={() => removeVisibleBy(id)} className="hover:text-red-500"><X className="w-3 h-3" /></button>
-                    </span>
-                  ))}
-                </div>
-              )}
             </div>
           </div>
 
