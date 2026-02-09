@@ -851,11 +851,117 @@ const statusColors: Record<UserStatus, { bg: string; dot: string; ring: string }
 /* ============================================
    HEADER
    ============================================ */
-function Header({ onMenuToggle, currentPage, onLogout, onProfileClick, userSession }: { onMenuToggle: () => void; currentPage: string; onLogout: () => void; onProfileClick: () => void; userSession: UserSession | null }) {
+function Header({ onMenuToggle, currentPage, onLogout, onProfileClick, onNotificationsClick, userSession }: { onMenuToggle: () => void; currentPage: string; onLogout: () => void; onProfileClick: () => void; onNotificationsClick: () => void; userSession: UserSession | null }) {
   const { t } = useTranslation()
   const [userMenuOpen, setUserMenuOpen] = useState(false)
   const [userStatus, setUserStatus] = useState<UserStatus>('available')
+  const [notificationsOpen, setNotificationsOpen] = useState(false)
+  const [notifications, setNotifications] = useState<{ id: string; type: string; title: string; message: string; isRead: boolean; createdAt: string }[]>([])
+  const [unreadCount, setUnreadCount] = useState(0)
   const menuRef = useRef<HTMLDivElement>(null)
+  const notifRef = useRef<HTMLDivElement>(null)
+
+  const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
+
+  const getAuthHeaders = () => {
+    const authData = localStorage.getItem('auth_token')
+    const token = authData ? JSON.parse(authData).token : null
+    return { 'Content-Type': 'application/json', ...(token && { 'Authorization': `Bearer ${token}` }) }
+  }
+
+  // Load notifications
+  const loadNotifications = async () => {
+    try {
+      const [notifRes, countRes] = await Promise.all([
+        fetch(`${API_URL}/api/notifications?pageSize=5`, { headers: getAuthHeaders() }),
+        fetch(`${API_URL}/api/notifications/unread/count`, { headers: getAuthHeaders() }),
+      ])
+
+      if (notifRes.ok) {
+        const data = await notifRes.json()
+        setNotifications(data.data?.notifications || data.data?.items || data.data || [])
+      }
+
+      if (countRes.ok) {
+        const data = await countRes.json()
+        setUnreadCount(data.data?.count || 0)
+      }
+    } catch (error) {
+      console.error('Error loading notifications:', error)
+    }
+  }
+
+  // Mark notification as read
+  const markAsRead = async (id: string, e: React.MouseEvent) => {
+    e.stopPropagation()
+    try {
+      await fetch(`${API_URL}/api/notifications/${id}/read`, {
+        method: 'POST',
+        headers: getAuthHeaders(),
+      })
+      setNotifications(prev => prev.map(n => n.id === id ? { ...n, isRead: true } : n))
+      setUnreadCount(prev => Math.max(0, prev - 1))
+    } catch (error) {
+      console.error('Error marking as read:', error)
+    }
+  }
+
+  // Mark all as read
+  const markAllAsRead = async () => {
+    try {
+      await fetch(`${API_URL}/api/notifications/read-all`, {
+        method: 'POST',
+        headers: getAuthHeaders(),
+      })
+      setNotifications(prev => prev.map(n => ({ ...n, isRead: true })))
+      setUnreadCount(0)
+    } catch (error) {
+      console.error('Error marking all as read:', error)
+    }
+  }
+
+  // Load notifications on mount and refresh periodically
+  useEffect(() => {
+    loadNotifications()
+    const interval = setInterval(loadNotifications, 30000) // Refresh every 30s
+    return () => clearInterval(interval)
+  }, [])
+
+  // Close notifications dropdown when clicking outside
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (notifRef.current && !notifRef.current.contains(event.target as Node)) {
+        setNotificationsOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [])
+
+  // Get notification icon by type
+  const getNotifIcon = (type: string) => {
+    switch (type) {
+      case 'SUCCESS': return <CheckCircle className="w-4 h-4 text-emerald-500" />
+      case 'WARNING': return <AlertTriangle className="w-4 h-4 text-amber-500" />
+      case 'ERROR': return <AlertCircle className="w-4 h-4 text-red-500" />
+      case 'SYSTEM': return <Settings className="w-4 h-4 text-purple-500" />
+      default: return <Bell className="w-4 h-4 text-blue-500" />
+    }
+  }
+
+  // Time ago helper
+  const timeAgo = (dateStr: string) => {
+    const date = new Date(dateStr)
+    const now = new Date()
+    const diffMs = now.getTime() - date.getTime()
+    const diffMins = Math.floor(diffMs / 60000)
+    if (diffMins < 1) return 'À l\'instant'
+    if (diffMins < 60) return `Il y a ${diffMins} min`
+    const diffHours = Math.floor(diffMins / 60)
+    if (diffHours < 24) return `Il y a ${diffHours}h`
+    const diffDays = Math.floor(diffHours / 24)
+    return `Il y a ${diffDays}j`
+  }
 
   // Données utilisateur depuis la session
   const currentUser = {
@@ -938,10 +1044,111 @@ function Header({ onMenuToggle, currentPage, onLogout, onProfileClick, userSessi
           </button>
 
           {/* Notifications */}
-          <button className="relative p-3 hover:bg-slate-100 rounded-xl transition-colors">
-            <Bell className="w-6 h-6 text-slate-600" />
-            <span className="absolute top-1 right-1 w-5 h-5 flex items-center justify-center text-[10px] font-bold bg-red-500 text-white rounded-full">3</span>
-          </button>
+          <div className="relative" ref={notifRef}>
+            <button
+              onClick={() => setNotificationsOpen(!notificationsOpen)}
+              className="relative p-3 hover:bg-slate-100 rounded-xl transition-colors"
+            >
+              <Bell className={`w-6 h-6 ${notificationsOpen ? 'text-emerald-600' : 'text-slate-600'}`} />
+              {unreadCount > 0 && (
+                <span className="absolute top-1 right-1 w-5 h-5 flex items-center justify-center text-[10px] font-bold bg-red-500 text-white rounded-full">
+                  {unreadCount > 9 ? '9+' : unreadCount}
+                </span>
+              )}
+            </button>
+
+            {/* Notifications Dropdown */}
+            {notificationsOpen && (
+              <div className="absolute right-0 top-full mt-2 w-96 bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden animate-slide-up z-50">
+                {/* Header */}
+                <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100 bg-gradient-to-r from-emerald-50 to-teal-50">
+                  <div className="flex items-center gap-2">
+                    <Bell className="w-5 h-5 text-emerald-600" />
+                    <span className="font-semibold text-slate-800">Notifications</span>
+                    {unreadCount > 0 && (
+                      <span className="px-2 py-0.5 text-xs font-bold bg-red-500 text-white rounded-full">
+                        {unreadCount}
+                      </span>
+                    )}
+                  </div>
+                  {unreadCount > 0 && (
+                    <button
+                      onClick={markAllAsRead}
+                      className="text-xs text-emerald-600 hover:text-emerald-700 font-medium"
+                    >
+                      Tout marquer lu
+                    </button>
+                  )}
+                </div>
+
+                {/* Notifications List */}
+                <div className="max-h-80 overflow-y-auto">
+                  {notifications.length === 0 ? (
+                    <div className="text-center py-8 px-4">
+                      <Bell className="w-10 h-10 text-slate-200 mx-auto mb-3" />
+                      <p className="text-slate-500 text-sm">Aucune notification</p>
+                    </div>
+                  ) : (
+                    <div className="divide-y divide-slate-50">
+                      {notifications.map(notif => (
+                        <div
+                          key={notif.id}
+                          className={`flex items-start gap-3 p-4 hover:bg-slate-50 transition-colors cursor-pointer ${
+                            !notif.isRead ? 'bg-emerald-50/50' : ''
+                          }`}
+                          onClick={() => {
+                            if (!notif.isRead) {
+                              markAsRead(notif.id, { stopPropagation: () => {} } as React.MouseEvent)
+                            }
+                            setNotificationsOpen(false)
+                            onNotificationsClick()
+                          }}
+                        >
+                          <div className="flex-shrink-0 mt-0.5">
+                            {getNotifIcon(notif.type)}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className={`text-sm ${!notif.isRead ? 'font-semibold text-slate-800' : 'text-slate-600'} line-clamp-1`}>
+                              {notif.title}
+                            </p>
+                            <p className="text-xs text-slate-500 line-clamp-2 mt-0.5">
+                              {notif.message}
+                            </p>
+                            <p className="text-xs text-slate-400 mt-1">
+                              {timeAgo(notif.createdAt)}
+                            </p>
+                          </div>
+                          {!notif.isRead && (
+                            <button
+                              onClick={(e) => markAsRead(notif.id, e)}
+                              className="flex-shrink-0 p-1 hover:bg-emerald-100 rounded text-emerald-600"
+                              title="Marquer comme lu"
+                            >
+                              <Check className="w-4 h-4" />
+                            </button>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* Footer */}
+                <div className="p-3 border-t border-slate-100 bg-slate-50">
+                  <button
+                    onClick={() => {
+                      setNotificationsOpen(false)
+                      onNotificationsClick()
+                    }}
+                    className="w-full flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium text-emerald-600 hover:bg-emerald-50 rounded-xl transition-colors"
+                  >
+                    Voir toutes les notifications
+                    <ChevronRight className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
 
           {/* Séparateur */}
           <div className="hidden sm:block w-px h-10 bg-slate-200 mx-2" />
@@ -12553,6 +12760,10 @@ function EventsPage({ initialStatus = 'INVESTIGATING' }: { initialStatus?: strin
   const [showProcedureModal, setShowProcedureModal] = useState(false)
   const [selectedProcedureId, setSelectedProcedureId] = useState<string>('')
 
+  // Bulk operations state
+  const [selectedEventIds, setSelectedEventIds] = useState<string[]>([])
+  const [bulkActionLoading, setBulkActionLoading] = useState(false)
+
   // Loading states
   const [loading, setLoading] = useState(true)
   const [loadingEvents, setLoadingEvents] = useState(false)
@@ -12862,6 +13073,7 @@ function EventsPage({ initialStatus = 'INVESTIGATING' }: { initialStatus?: strin
     } else if (currentView === 'list') {
       setCurrentView('dashboard')
       setSelectedCategoryId(null)
+      setSelectedEventIds([]) // Clear bulk selection
     } else if (currentView === 'form') {
       setCurrentView('dashboard')
       resetForm()
@@ -12968,6 +13180,122 @@ function EventsPage({ initialStatus = 'INVESTIGATING' }: { initialStatus?: strin
       }
     } catch (error) {
       console.error('Error assigning event:', error)
+    }
+  }
+
+  // Toggle event selection for bulk operations
+  const toggleEventSelection = (eventId: string, e: React.MouseEvent) => {
+    e.stopPropagation()
+    setSelectedEventIds(prev =>
+      prev.includes(eventId)
+        ? prev.filter(id => id !== eventId)
+        : [...prev, eventId]
+    )
+  }
+
+  // Select all events in current view
+  const selectAllEvents = () => {
+    if (selectedEventIds.length === events.length) {
+      setSelectedEventIds([])
+    } else {
+      setSelectedEventIds(events.map(e => e.id))
+    }
+  }
+
+  // Clear selection
+  const clearSelection = () => {
+    setSelectedEventIds([])
+  }
+
+  // Bulk update status
+  const handleBulkStatusChange = async (newStatus: string) => {
+    if (selectedEventIds.length === 0) return
+
+    try {
+      setBulkActionLoading(true)
+      const response = await fetch(`${API_URL}/api/events/bulk/status`, {
+        method: 'PUT',
+        headers: getHeaders(),
+        body: JSON.stringify({ eventIds: selectedEventIds, status: newStatus })
+      })
+
+      if (response.ok) {
+        const data = await response.json()
+        alert(`${data.data?.updated || selectedEventIds.length} événement(s) mis à jour avec succès`)
+        clearSelection()
+        loadEvents(selectedStatus, selectedCategoryId || undefined)
+        loadInitialData()
+      } else {
+        const errorData = await response.json()
+        alert(`Erreur: ${errorData.message || 'Erreur lors de la mise à jour'}`)
+      }
+    } catch (error) {
+      console.error('Error bulk updating status:', error)
+      alert('Erreur réseau lors de la mise à jour')
+    } finally {
+      setBulkActionLoading(false)
+    }
+  }
+
+  // Bulk assign
+  const handleBulkAssign = async (userId: string | null) => {
+    if (selectedEventIds.length === 0) return
+
+    try {
+      setBulkActionLoading(true)
+      const response = await fetch(`${API_URL}/api/events/bulk/assign`, {
+        method: 'PUT',
+        headers: getHeaders(),
+        body: JSON.stringify({ eventIds: selectedEventIds, assignedToId: userId })
+      })
+
+      if (response.ok) {
+        const data = await response.json()
+        alert(`${data.data?.updated || selectedEventIds.length} événement(s) assigné(s) avec succès`)
+        clearSelection()
+        loadEvents(selectedStatus, selectedCategoryId || undefined)
+      } else {
+        const errorData = await response.json()
+        alert(`Erreur: ${errorData.message || 'Erreur lors de l\'assignation'}`)
+      }
+    } catch (error) {
+      console.error('Error bulk assigning:', error)
+      alert('Erreur réseau lors de l\'assignation')
+    } finally {
+      setBulkActionLoading(false)
+    }
+  }
+
+  // Bulk delete
+  const handleBulkDelete = async () => {
+    if (selectedEventIds.length === 0) return
+
+    const confirm = window.confirm(`Voulez-vous vraiment supprimer ${selectedEventIds.length} événement(s) ? Cette action est irréversible.`)
+    if (!confirm) return
+
+    try {
+      setBulkActionLoading(true)
+      const response = await fetch(`${API_URL}/api/events/bulk`, {
+        method: 'DELETE',
+        headers: getHeaders(),
+        body: JSON.stringify({ eventIds: selectedEventIds })
+      })
+
+      if (response.ok) {
+        const data = await response.json()
+        alert(`${data.data?.deleted || selectedEventIds.length} événement(s) supprimé(s) avec succès`)
+        clearSelection()
+        loadEvents(selectedStatus, selectedCategoryId || undefined)
+        loadInitialData()
+      } else {
+        const errorData = await response.json()
+        alert(`Erreur: ${errorData.message || 'Erreur lors de la suppression'}`)
+      }
+    } catch (error) {
+      console.error('Error bulk deleting:', error)
+      alert('Erreur réseau lors de la suppression')
+    } finally {
+      setBulkActionLoading(false)
     }
   }
 
@@ -13793,6 +14121,8 @@ function EventsPage({ initialStatus = 'INVESTIGATING' }: { initialStatus?: strin
   // List View
   if (currentView === 'list') {
     const selectedCategory = categories.find(c => c.id === selectedCategoryId)
+    const allSelected = events.length > 0 && selectedEventIds.length === events.length
+    const someSelected = selectedEventIds.length > 0 && selectedEventIds.length < events.length
 
     return (
       <div className="p-6">
@@ -13814,7 +14144,119 @@ function EventsPage({ initialStatus = 'INVESTIGATING' }: { initialStatus?: strin
               <p className="text-slate-500 mt-1">{events.length} événement(s)</p>
             </div>
           </div>
+
+          {/* Select All Checkbox */}
+          {events.length > 0 && (
+            <button
+              onClick={selectAllEvents}
+              className="flex items-center gap-2 px-4 py-2 text-sm text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
+            >
+              <div className={`w-5 h-5 rounded border-2 flex items-center justify-center transition-all ${
+                allSelected ? 'bg-emerald-500 border-emerald-500' : someSelected ? 'bg-emerald-500/50 border-emerald-500' : 'border-slate-300'
+              }`}>
+                {(allSelected || someSelected) && <Check className="w-3 h-3 text-white" />}
+              </div>
+              {allSelected ? 'Tout désélectionner' : 'Tout sélectionner'}
+            </button>
+          )}
         </div>
+
+        {/* Bulk Action Bar */}
+        {selectedEventIds.length > 0 && (
+          <div className="mb-6 p-4 bg-gradient-to-r from-emerald-50 to-teal-50 rounded-xl border border-emerald-200 flex items-center justify-between animate-slide-up">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 bg-emerald-500 rounded-lg flex items-center justify-center">
+                <CheckSquare className="w-5 h-5 text-white" />
+              </div>
+              <div>
+                <p className="font-semibold text-emerald-800">{selectedEventIds.length} événement(s) sélectionné(s)</p>
+                <p className="text-sm text-emerald-600">Choisissez une action à appliquer</p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2">
+              {/* Change Status Dropdown */}
+              <div className="relative group">
+                <button
+                  disabled={bulkActionLoading}
+                  className="flex items-center gap-2 px-4 py-2 bg-white border border-emerald-300 text-emerald-700 rounded-lg hover:bg-emerald-50 transition-colors disabled:opacity-50"
+                >
+                  <RotateCcw className="w-4 h-4" />
+                  Changer le statut
+                  <ChevronDown className="w-4 h-4" />
+                </button>
+                <div className="absolute right-0 top-full mt-1 w-48 bg-white rounded-lg shadow-lg border border-slate-200 py-1 z-20 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all">
+                  {Object.entries(STATUS_CONFIG).map(([key, config]) => (
+                    <button
+                      key={key}
+                      onClick={() => handleBulkStatusChange(key)}
+                      className="w-full flex items-center gap-2 px-4 py-2 text-left text-sm hover:bg-slate-50 transition-colors"
+                    >
+                      <config.icon className={`w-4 h-4 ${config.textColor}`} />
+                      {config.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Assign Dropdown */}
+              <div className="relative group">
+                <button
+                  disabled={bulkActionLoading}
+                  className="flex items-center gap-2 px-4 py-2 bg-white border border-blue-300 text-blue-700 rounded-lg hover:bg-blue-50 transition-colors disabled:opacity-50"
+                >
+                  <User className="w-4 h-4" />
+                  Assigner
+                  <ChevronDown className="w-4 h-4" />
+                </button>
+                <div className="absolute right-0 top-full mt-1 w-56 bg-white rounded-lg shadow-lg border border-slate-200 py-1 z-20 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all max-h-64 overflow-y-auto">
+                  <button
+                    onClick={() => handleBulkAssign(null)}
+                    className="w-full flex items-center gap-2 px-4 py-2 text-left text-sm hover:bg-slate-50 transition-colors text-slate-500"
+                  >
+                    <X className="w-4 h-4" />
+                    Retirer l'assignation
+                  </button>
+                  <div className="border-t border-slate-100 my-1" />
+                  {users.slice(0, 10).map(user => (
+                    <button
+                      key={user.id}
+                      onClick={() => handleBulkAssign(user.id)}
+                      className="w-full flex items-center gap-2 px-4 py-2 text-left text-sm hover:bg-slate-50 transition-colors"
+                    >
+                      <div className="w-6 h-6 rounded-full bg-slate-200 flex items-center justify-center text-xs font-medium">
+                        {user.firstName?.[0]}{user.lastName?.[0]}
+                      </div>
+                      <span className="truncate">{user.firstName} {user.lastName}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Delete Button */}
+              <button
+                onClick={handleBulkDelete}
+                disabled={bulkActionLoading}
+                className="flex items-center gap-2 px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors disabled:opacity-50"
+              >
+                <Trash2 className="w-4 h-4" />
+                Supprimer
+              </button>
+
+              {/* Clear Selection */}
+              <button
+                onClick={clearSelection}
+                className="p-2 text-slate-500 hover:bg-slate-200 rounded-lg transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+
+              {bulkActionLoading && (
+                <RefreshCw className="w-5 h-5 text-emerald-500 animate-spin" />
+              )}
+            </div>
+          </div>
+        )}
 
         {/* Events Grid */}
         {loadingEvents ? (
@@ -13830,22 +14272,37 @@ function EventsPage({ initialStatus = 'INVESTIGATING' }: { initialStatus?: strin
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {events.map(event => {
               const severityConfig = SEVERITY_CONFIG[event.severity]
+              const isSelected = selectedEventIds.includes(event.id)
               return (
                 <div
                   key={event.id}
                   onClick={() => handleEventClick(event)}
-                  className="bg-white rounded-xl border border-slate-200 p-5 hover:shadow-lg hover:border-emerald-200 transition-all cursor-pointer group"
+                  className={`bg-white rounded-xl border p-5 hover:shadow-lg transition-all cursor-pointer group relative ${
+                    isSelected ? 'border-emerald-500 ring-2 ring-emerald-500/20' : 'border-slate-200 hover:border-emerald-200'
+                  }`}
                 >
-                  <div className="flex items-start justify-between mb-3">
+                  {/* Checkbox */}
+                  <button
+                    onClick={(e) => toggleEventSelection(event.id, e)}
+                    className={`absolute top-3 left-3 w-6 h-6 rounded border-2 flex items-center justify-center transition-all z-10 ${
+                      isSelected
+                        ? 'bg-emerald-500 border-emerald-500'
+                        : 'border-slate-300 bg-white group-hover:border-emerald-400'
+                    }`}
+                  >
+                    {isSelected && <Check className="w-4 h-4 text-white" />}
+                  </button>
+
+                  <div className="flex items-start justify-between mb-3 pl-8">
                     <span className="text-xs font-mono text-slate-500">{event.code}</span>
                     <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${severityConfig.bgColor} ${severityConfig.textColor}`}>
                       {severityConfig.label}
                     </span>
                   </div>
-                  <h3 className="font-semibold text-slate-800 mb-2 line-clamp-2 group-hover:text-emerald-600 transition-colors">
+                  <h3 className="font-semibold text-slate-800 mb-2 line-clamp-2 group-hover:text-emerald-600 transition-colors pl-8">
                     {event.title}
                   </h3>
-                  <div className="flex items-center gap-2 text-sm text-slate-500">
+                  <div className="flex items-center gap-2 text-sm text-slate-500 pl-8">
                     <MapPin className="w-4 h-4" />
                     <span className="truncate">{event.location}</span>
                   </div>
@@ -14148,7 +14605,7 @@ function App() {
         onMobileClose={() => setMobileMenuOpen(false)}
       />
       <div className={`transition-all duration-300 ${sidebarCollapsed ? 'lg:ml-16' : 'lg:ml-[270px]'}`}>
-        <Header onMenuToggle={() => setMobileMenuOpen(true)} currentPage={currentPage} onLogout={handleLogout} onProfileClick={() => setCurrentPage('my-profile')} userSession={userSession} />
+        <Header onMenuToggle={() => setMobileMenuOpen(true)} currentPage={currentPage} onLogout={handleLogout} onProfileClick={() => setCurrentPage('my-profile')} onNotificationsClick={() => setCurrentPage('notifications')} userSession={userSession} />
         <main className="p-4 lg:p-8">
           {currentPage === 'dashboard' && <Dashboard userSession={userSession} onNavigate={setCurrentPage} />}
           {currentPage === 'my-profile' && <MyProfilePage userSession={userSession} onUpdateSession={setUserSession} />}
