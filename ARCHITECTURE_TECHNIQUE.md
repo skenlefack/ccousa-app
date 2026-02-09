@@ -2152,4 +2152,4 @@ docker-compose logs -f
 ---
 
 **Document préparé pour CCOUSA-APP**
-**Version 1.0 - Janvier 2026**
+**Version 1.0 - Janvier 2026 - Serge Kenlefack Tchinda - TOPNET SOLUTIONS**

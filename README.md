@@ -300,7 +300,7 @@ Ce projet est sous licence MIT. Voir le fichier [LICENSE](LICENSE) pour plus de 
 
 ## 📞 Support
 
-- **Email** : support@ccousa-app.cm
+- **Email** : skenlefack@topnet-solutions.com
 - **Documentation** : https://docs.ccousa-app.cm
 - **Site web** : https://www.ccousa-app.cm
 
@@ -309,8 +309,9 @@ Ce projet est sous licence MIT. Voir le fichier [LICENSE](LICENSE) pour plus de 
 ## 🙏 Remerciements
 
 - **MINEPIA** - Ministère de l'Élevage, des Pêches et des Industries Animales
-- **PATNUC** - Programme d'Appui Technique
+- **PATNUC** - Projet d'accélération de la transformation numérique au Cameroun
 - **Banque Mondiale** - Soutien financier
+- **AFREETECH** - Conception et Developpement
 
 ---
 
