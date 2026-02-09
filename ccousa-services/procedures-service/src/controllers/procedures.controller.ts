@@ -193,6 +193,26 @@ export class ProceduresController {
     }
   }
 
+  // PUT /procedures/:id/restore
+  async restore(req: Request, res: Response): Promise<void> {
+    try {
+      await proceduresService.restore(req.params.id);
+      res.json({ success: true, message: 'Procédure restaurée' });
+    } catch (error) {
+      handleError(res, error, 'restore');
+    }
+  }
+
+  // DELETE /procedures/:id/permanent
+  async deletePermanent(req: Request, res: Response): Promise<void> {
+    try {
+      await proceduresService.deletePermanent(req.params.id);
+      res.json({ success: true, message: 'Procédure supprimée définitivement' });
+    } catch (error) {
+      handleError(res, error, 'deletePermanent');
+    }
+  }
+
   // POST /procedures/:id/duplicate
   async duplicate(req: Request, res: Response): Promise<void> {
     try {

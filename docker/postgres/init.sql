@@ -165,6 +165,7 @@ CREATE TABLE IF NOT EXISTS system_configurations (
     key VARCHAR(100) NOT NULL UNIQUE,
     value TEXT,
     value_type VARCHAR(20) DEFAULT 'STRING',
+    category VARCHAR(50) DEFAULT 'GENERAL',
     description TEXT,
     is_editable BOOLEAN DEFAULT TRUE,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -175,12 +176,15 @@ CREATE TABLE IF NOT EXISTS system_configurations (
 -- Table des horaires de travail
 CREATE TABLE IF NOT EXISTS work_schedules (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    code VARCHAR(50) NOT NULL UNIQUE,
     name VARCHAR(100) NOT NULL,
-    type VARCHAR(50) NOT NULL,
+    description TEXT,
+    type VARCHAR(50),
     timezone_id UUID REFERENCES timezones(id),
     start_date DATE,
     end_date DATE,
     is_period_specific BOOLEAN DEFAULT FALSE,
+    is_default BOOLEAN DEFAULT FALSE,
     is_active BOOLEAN DEFAULT TRUE,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -195,7 +199,9 @@ CREATE TABLE IF NOT EXISTS work_schedule_days (
     day_of_week INTEGER NOT NULL,
     start_time TIME NOT NULL,
     end_time TIME NOT NULL,
-    break_duration INTEGER DEFAULT 0,
+    break_start_time TIME,
+    break_end_time TIME,
+    break_duration_minutes INTEGER DEFAULT 60,
     is_working_day BOOLEAN DEFAULT TRUE,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
@@ -236,8 +242,10 @@ CREATE TABLE IF NOT EXISTS event_categories (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     code VARCHAR(50) NOT NULL UNIQUE,
     name VARCHAR(150) NOT NULL,
+    description TEXT,
     color VARCHAR(7) DEFAULT '#0066CC',
     icon VARCHAR(50) DEFAULT 'folder',
+    sort_order INTEGER DEFAULT 0,
     language_id UUID REFERENCES languages(id),
     is_active BOOLEAN DEFAULT TRUE,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -697,17 +705,17 @@ INSERT INTO field_types (code, name, category) VALUES
 ON CONFLICT (code) DO NOTHING;
 
 -- Configuration système
-INSERT INTO system_configurations (key, value, value_type, description) VALUES
-('SYSTEM_LAUNCH_DATE', '2024-07-01', 'DATE', 'Date officielle de lancement du système'),
-('MAX_ATTACHMENT_SIZE_MB', '100', 'INTEGER', 'Taille maximale des fichiers (Mo)'),
-('DEFAULT_COUNTRY', 'CMR', 'STRING', 'Pays par défaut'),
-('DEFAULT_LANGUAGE', 'fr', 'STRING', 'Langue par défaut'),
-('DEFAULT_TIMEZONE', 'Africa/Douala', 'STRING', 'Fuseau horaire par défaut'),
-('DEFAULT_WORK_HOURS', '8', 'INTEGER', 'Heures de travail par défaut'),
-('EMAIL_NOTIFICATIONS_ENABLED', 'true', 'BOOLEAN', 'Activer les notifications email'),
-('PRIVATE_BOTTLENECKS', 'true', 'BOOLEAN', 'Goulets d''étranglement privés'),
-('SHOW_EXTERNAL_COMMENTS', 'false', 'BOOLEAN', 'Afficher commentaires externes'),
-('REQUIRE_DATA_VALIDATION', 'true', 'BOOLEAN', 'Validation des données requise')
+INSERT INTO system_configurations (key, value, value_type, category, description) VALUES
+('SYSTEM_LAUNCH_DATE', '2024-07-01', 'DATE', 'GENERAL', 'Date officielle de lancement du système'),
+('MAX_ATTACHMENT_SIZE_MB', '100', 'INTEGER', 'FILES', 'Taille maximale des fichiers (Mo)'),
+('DEFAULT_COUNTRY', 'CMR', 'STRING', 'GENERAL', 'Pays par défaut'),
+('DEFAULT_LANGUAGE', 'fr', 'STRING', 'GENERAL', 'Langue par défaut'),
+('DEFAULT_TIMEZONE', 'Africa/Douala', 'STRING', 'GENERAL', 'Fuseau horaire par défaut'),
+('DEFAULT_WORK_HOURS', '8', 'INTEGER', 'WORKFLOW', 'Heures de travail par défaut'),
+('EMAIL_NOTIFICATIONS_ENABLED', 'true', 'BOOLEAN', 'NOTIFICATIONS', 'Activer les notifications email'),
+('PRIVATE_BOTTLENECKS', 'true', 'BOOLEAN', 'WORKFLOW', 'Goulets d''étranglement privés'),
+('SHOW_EXTERNAL_COMMENTS', 'false', 'BOOLEAN', 'DISPLAY', 'Afficher commentaires externes'),
+('REQUIRE_DATA_VALIDATION', 'true', 'BOOLEAN', 'WORKFLOW', 'Validation des données requise')
 ON CONFLICT (key) DO NOTHING;
 
 -- Créer un utilisateur admin par défaut (mot de passe: Admin@123)

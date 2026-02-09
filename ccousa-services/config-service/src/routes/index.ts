@@ -43,6 +43,15 @@ router.put('/document-types/:id', (req, res) => configController.updateDocumentT
 router.delete('/document-types/:id', (req, res) => configController.deleteDocumentType(req, res));
 
 // ===========================================
+// Event Provenances (Origins)
+// ===========================================
+router.get('/event-provenances', (req, res) => configController.getEventProvenances(req, res));
+router.get('/event-provenances/:id', (req, res) => configController.getEventProvenanceById(req, res));
+router.post('/event-provenances', (req, res) => configController.createEventProvenance(req, res));
+router.put('/event-provenances/:id', (req, res) => configController.updateEventProvenance(req, res));
+router.delete('/event-provenances/:id', (req, res) => configController.deleteEventProvenance(req, res));
+
+// ===========================================
 // Organizational Units
 // ===========================================
 router.get('/organizational-units', (req, res) => configController.getOrganizationalUnits(req, res));

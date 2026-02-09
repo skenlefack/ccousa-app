@@ -8,10 +8,19 @@ export class ConfigService {
 
   async getSystemSettings() {
     const result = await query(
-      `SELECT key, value, data_type, category, description, is_editable
-       FROM system_configurations WHERE is_active = true ORDER BY category, key`
+      `SELECT id, key, value, value_type, category, description, is_editable, updated_at
+       FROM system_configurations ORDER BY category, key`
     );
-    return result.rows;
+    return result.rows.map(row => ({
+      id: row.id,
+      key: row.key,
+      value: row.value,
+      valueType: row.value_type,
+      category: row.category,
+      description: row.description,
+      isEditable: row.is_editable,
+      updatedAt: row.updated_at,
+    }));
   }
 
   async getSettingByKey(key: string) {
@@ -57,7 +66,18 @@ export class ConfigService {
        ${includeInactive ? '' : 'WHERE is_active = true'}
        ORDER BY sort_order, name`
     );
-    return result.rows;
+    return result.rows.map((row: any) => ({
+      id: row.id,
+      code: row.code,
+      name: row.name,
+      description: row.description,
+      color: row.color,
+      icon: row.icon,
+      isActive: row.is_active,
+      sortOrder: row.sort_order,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+    }));
   }
 
   async getEventCategoryById(id: string) {
@@ -66,7 +86,19 @@ export class ConfigService {
       [id]
     );
     if (result.rows.length === 0) throw new Error('CATEGORY_NOT_FOUND');
-    return result.rows[0];
+    const row = result.rows[0];
+    return {
+      id: row.id,
+      code: row.code,
+      name: row.name,
+      description: row.description,
+      color: row.color,
+      icon: row.icon,
+      isActive: row.is_active,
+      sortOrder: row.sort_order,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+    };
   }
 
   async createEventCategory(data: {
@@ -248,6 +280,106 @@ export class ConfigService {
   }
 
   // ===========================================
+  // Event Provenances (Origins)
+  // ===========================================
+
+  async getEventProvenances(includeInactive = false) {
+    const result = await query(
+      `SELECT id, code, name, description, color, icon, is_active, sort_order, created_at, updated_at
+       FROM event_provenances
+       ${includeInactive ? '' : 'WHERE is_active = true'}
+       ORDER BY sort_order, name`
+    );
+    return result.rows.map(row => ({
+      id: row.id,
+      code: row.code,
+      name: row.name,
+      description: row.description,
+      color: row.color,
+      icon: row.icon,
+      isActive: row.is_active,
+      sortOrder: row.sort_order,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+    }));
+  }
+
+  async getEventProvenanceById(id: string) {
+    const result = await query(`SELECT * FROM event_provenances WHERE id = $1`, [id]);
+    if (result.rows.length === 0) throw new Error('PROVENANCE_NOT_FOUND');
+    return result.rows[0];
+  }
+
+  async createEventProvenance(data: {
+    code: string;
+    name: string;
+    description?: string;
+    color?: string;
+    icon?: string;
+    sortOrder?: number;
+    isActive?: boolean;
+  }) {
+    const maxSort = await query('SELECT COALESCE(MAX(sort_order), 0) + 1 as next FROM event_provenances');
+    const sortOrder = data.sortOrder || maxSort.rows[0].next;
+
+    const result = await query(
+      `INSERT INTO event_provenances (code, name, description, color, icon, sort_order, is_active)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)
+       RETURNING *`,
+      [
+        data.code,
+        data.name,
+        data.description || null,
+        data.color || '#6366f1',
+        data.icon || 'map-pin',
+        sortOrder,
+        data.isActive ?? true
+      ]
+    );
+    logger.info(`Provenance créée: ${data.code}`);
+    return result.rows[0];
+  }
+
+  async updateEventProvenance(id: string, data: Partial<{
+    code: string;
+    name: string;
+    description: string;
+    color: string;
+    icon: string;
+    sortOrder: number;
+    isActive: boolean;
+  }>) {
+    const fields: string[] = [];
+    const values: unknown[] = [];
+    let paramIndex = 1;
+
+    if (data.code !== undefined) { fields.push(`code = $${paramIndex++}`); values.push(data.code); }
+    if (data.name !== undefined) { fields.push(`name = $${paramIndex++}`); values.push(data.name); }
+    if (data.description !== undefined) { fields.push(`description = $${paramIndex++}`); values.push(data.description); }
+    if (data.color !== undefined) { fields.push(`color = $${paramIndex++}`); values.push(data.color); }
+    if (data.icon !== undefined) { fields.push(`icon = $${paramIndex++}`); values.push(data.icon); }
+    if (data.sortOrder !== undefined) { fields.push(`sort_order = $${paramIndex++}`); values.push(data.sortOrder); }
+    if (data.isActive !== undefined) { fields.push(`is_active = $${paramIndex++}`); values.push(data.isActive); }
+    fields.push(`updated_at = CURRENT_TIMESTAMP`);
+    values.push(id);
+
+    const result = await query(
+      `UPDATE event_provenances SET ${fields.join(', ')} WHERE id = $${paramIndex} RETURNING *`,
+      values
+    );
+    if (result.rows.length === 0) throw new Error('PROVENANCE_NOT_FOUND');
+    logger.info(`Provenance mise à jour: ${id}`);
+    return result.rows[0];
+  }
+
+  async deleteEventProvenance(id: string) {
+    const result = await query(`DELETE FROM event_provenances WHERE id = $1 RETURNING id`, [id]);
+    if (result.rows.length === 0) throw new Error('PROVENANCE_NOT_FOUND');
+    logger.info(`Provenance supprimée: ${id}`);
+    return { deleted: true };
+  }
+
+  // ===========================================
   // Organizational Units
   // ===========================================
 
@@ -363,17 +495,17 @@ export class ConfigService {
   // Work Schedules
   // ===========================================
 
-  async getWorkSchedules() {
-    const result = await query(
-      `SELECT ws.*,
-        (SELECT json_agg(wsd ORDER BY wsd.day_of_week)
-         FROM work_schedule_days wsd
-         WHERE wsd.work_schedule_id = ws.id) as days
-       FROM work_schedules ws
-       WHERE ws.is_active = true
-       ORDER BY ws.is_default DESC, ws.name`
-    );
-    return result.rows.map(row => ({
+  // Helper to format time from PostgreSQL (HH:MM:SS) to frontend format (HH:MM)
+  private formatTime(time: string | null): string | null {
+    if (!time) return null;
+    // If already in HH:MM format, return as-is
+    if (time.length === 5) return time;
+    // If in HH:MM:SS format, trim seconds
+    return time.substring(0, 5);
+  }
+
+  private transformScheduleRow(row: any) {
+    return {
       id: row.id,
       code: row.code,
       name: row.name,
@@ -387,14 +519,27 @@ export class ConfigService {
         id: d.id,
         workScheduleId: d.work_schedule_id,
         dayOfWeek: d.day_of_week,
-        startTime: d.start_time,
-        endTime: d.end_time,
-        breakStartTime: d.break_start_time,
-        breakEndTime: d.break_end_time,
-        breakDurationMinutes: d.break_duration_minutes,
-        isWorkingDay: d.is_working_day,
+        startTime: this.formatTime(d.start_time) || '08:00',
+        endTime: this.formatTime(d.end_time) || '17:00',
+        breakStartTime: this.formatTime(d.break_start_time),
+        breakEndTime: this.formatTime(d.break_end_time),
+        breakDurationMinutes: d.break_duration_minutes || 60,
+        isWorkingDay: d.is_working_day ?? true,
       })) || [],
-    }));
+    };
+  }
+
+  async getWorkSchedules() {
+    const result = await query(
+      `SELECT ws.*,
+        (SELECT json_agg(wsd ORDER BY wsd.day_of_week)
+         FROM work_schedule_days wsd
+         WHERE wsd.work_schedule_id = ws.id) as days
+       FROM work_schedules ws
+       WHERE ws.is_active = true
+       ORDER BY ws.is_default DESC, ws.name`
+    );
+    return result.rows.map(row => this.transformScheduleRow(row));
   }
 
   async getWorkScheduleById(id: string) {
@@ -408,7 +553,7 @@ export class ConfigService {
       [id]
     );
     if (result.rows.length === 0) throw new Error('SCHEDULE_NOT_FOUND');
-    return result.rows[0];
+    return this.transformScheduleRow(result.rows[0]);
   }
 
   async createWorkSchedule(data: {
@@ -584,16 +729,16 @@ export class ConfigService {
 
   async getTimezones() {
     const result = await query(
-      `SELECT id, name, utc_offset as offset,
-        EXTRACT(HOUR FROM utc_offset) * 60 + EXTRACT(MINUTE FROM utc_offset) as offset_minutes
-       FROM timezones WHERE is_active = true ORDER BY utc_offset`
+      `SELECT id, code, name, offset_hours
+       FROM timezones ORDER BY offset_hours`
     );
     return result.rows.map(r => ({
       id: r.id,
+      code: r.code,
       name: r.name,
-      offset: r.offset,
-      offsetMinutes: r.offset_minutes,
-      isActive: true,
+      offset: `UTC${r.offset_hours >= 0 ? '+' : ''}${r.offset_hours}`,
+      offsetHours: r.offset_hours,
+      offsetMinutes: r.offset_hours * 60,
     }));
   }
 

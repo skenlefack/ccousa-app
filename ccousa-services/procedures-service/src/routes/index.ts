@@ -78,6 +78,8 @@ router.get('/:id', (req, res) => proceduresController.getById(req, res));
 router.post('/', (req, res) => proceduresController.create(req, res));
 router.put('/:id', (req, res) => proceduresController.update(req, res));
 router.delete('/:id', (req, res) => proceduresController.delete(req, res));
+router.put('/:id/restore', (req, res) => proceduresController.restore(req, res));
+router.delete('/:id/permanent', (req, res) => proceduresController.deletePermanent(req, res));
 
 // Procedure Actions
 router.post('/:id/duplicate', (req, res) => proceduresController.duplicate(req, res));

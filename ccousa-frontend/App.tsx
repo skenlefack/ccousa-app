@@ -12,7 +12,18 @@ import {
   ToggleLeft, List, CheckSquare, Radio, Image, Paperclip, Star, Sliders,
   AlignLeft, Heading, MinusCircle, Columns, Layers, Copy, Save, Play,
   Settings, ChevronUp, GripVertical, Maximize2, Code, Palette, Zap,
-  MousePointer, Move, LayoutGrid, PanelLeftClose, PanelRightClose
+  MousePointer, Move, LayoutGrid, PanelLeftClose, PanelRightClose,
+  Bug, Microscope, FlaskConical, Thermometer, Heart, HeartPulse, Stethoscope,
+  Pill, TestTube2, Biohazard, ShieldAlert, ShieldCheck,
+  Flame, Droplet, Wind, Leaf, TreePine, Siren,
+  Bird, Fish, Dog, Cat, Rat, Beef, Egg, Wheat, Apple, Carrot,
+  Factory, Warehouse, Home, MapPinned, Navigation, Route, Truck, Car,
+  Plane, Ship, Train, Megaphone, Radio as RadioIcon,
+  FileWarning, FileCheck, FolderOpen, Folder, Archive,
+  Database, Lock as LockIcon, Unlock, Key, Fingerprint,
+  ScanLine, QrCode, Barcode, Tag, Tags, Bookmark, Flag, Award, Trophy,
+  Target, Crosshair, Lightbulb, HelpCircle, AlertCircle,
+  Inbox, Send, RotateCcw, CheckCircle
 } from 'lucide-react'
 
 /* ============================================
@@ -1054,21 +1065,168 @@ function Header({ onMenuToggle, currentPage, onLogout, onProfileClick, userSessi
 /* ============================================
    DASHBOARD - Design Amélioré
    ============================================ */
-function Dashboard({ userSession }: { userSession: UserSession | null }) {
-  const { t } = useTranslation()
+interface DashboardStats {
+  totalEvents: number
+  upcomingEvents: number
+  completedEvents: number
+  eventCompletionRate: number
+  totalUsers: number
+  activeUsers: number
+  newUsersThisMonth: number
+  userGrowthRate: number
+  totalProcedures: number
+  activeProcedures: number
+  totalForms: number
+  formSubmissions: number
+  totalArticles: number
+  publishedArticles: number
+  articleViews: number
+  criticalEvents?: number
+  highEvents?: number
+}
 
-  const stats = [
-    { title: t('dashboard.totalEvents'), value: '1,248', change: 12, icon: <Activity className="w-5 h-5" />, color: 'from-emerald-500 to-teal-600', bgLight: 'bg-emerald-50', textColor: 'text-emerald-600' },
-    { title: t('dashboard.inProgress'), value: '156', change: -5, icon: <Clock className="w-5 h-5" />, color: 'from-blue-500 to-indigo-600', bgLight: 'bg-blue-50', textColor: 'text-blue-600' },
-    { title: t('dashboard.activeAlerts'), value: '23', change: 8, icon: <AlertTriangle className="w-5 h-5" />, color: 'from-amber-500 to-orange-600', bgLight: 'bg-amber-50', textColor: 'text-amber-600' },
-    { title: t('dashboard.confirmedOutbreaks'), value: '7', change: -15, icon: <AlertTriangle className="w-5 h-5" />, color: 'from-rose-500 to-red-600', bgLight: 'bg-rose-50', textColor: 'text-rose-600' },
+interface RecentEvent {
+  id: string
+  code: string
+  title: string
+  location: string
+  status: string
+  severity: string
+  reportedAt: string
+  category?: { name: string; color: string }
+}
+
+interface RegionStat {
+  name: string
+  events: number
+  color: string
+}
+
+function Dashboard({ userSession, onNavigate }: { userSession: UserSession | null; onNavigate?: (page: string) => void }) {
+  const { t } = useTranslation()
+  const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
+
+  // State pour les données
+  const [dashboardStats, setDashboardStats] = useState<DashboardStats | null>(null)
+  const [recentEvents, setRecentEvents] = useState<RecentEvent[]>([])
+  const [regionStats, setRegionStats] = useState<RegionStat[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+
+  // Helper pour les headers auth
+  const getHeaders = () => {
+    const authData = localStorage.getItem('auth_token')
+    const token = authData ? JSON.parse(authData).token : null
+    return { 'Content-Type': 'application/json', ...(token && { 'Authorization': `Bearer ${token}` }) }
+  }
+
+  // Charger les données du dashboard
+  useEffect(() => {
+    const loadDashboardData = async () => {
+      try {
+        setLoading(true)
+        setError(null)
+
+        // Charger les statistiques et événements en parallèle
+        const [statsRes, eventsRes] = await Promise.all([
+          fetch(`${API_URL}/api/analytics/dashboard/stats`, { headers: getHeaders() }),
+          fetch(`${API_URL}/api/events?pageSize=5&sortBy=reportedAt&sortOrder=desc`, { headers: getHeaders() }),
+        ])
+
+        if (statsRes.ok) {
+          const statsData = await statsRes.json()
+          setDashboardStats(statsData.data)
+        }
+
+        if (eventsRes.ok) {
+          const eventsData = await eventsRes.json()
+          setRecentEvents(eventsData.data?.items || [])
+        }
+
+        // Charger les stats par région (simulé si pas d'endpoint)
+        setRegionStats([
+          { name: 'Adamaoua', events: Math.floor(Math.random() * 50) + 10, color: 'bg-emerald-500' },
+          { name: 'Centre', events: Math.floor(Math.random() * 50) + 20, color: 'bg-blue-500' },
+          { name: 'Est', events: Math.floor(Math.random() * 30) + 5, color: 'bg-purple-500' },
+          { name: 'Extrême-Nord', events: Math.floor(Math.random() * 80) + 30, color: 'bg-orange-500' },
+          { name: 'Littoral', events: Math.floor(Math.random() * 50) + 15, color: 'bg-teal-500' },
+          { name: 'Nord', events: Math.floor(Math.random() * 60) + 25, color: 'bg-rose-500' },
+        ])
+
+      } catch (err) {
+        console.error('Error loading dashboard data:', err)
+        setError('Erreur lors du chargement des données')
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    loadDashboardData()
+  }, [])
+
+  // Convertir le status API vers le format d'affichage
+  const mapEventStatus = (status: string, severity: string): string => {
+    if (severity === 'CRITICAL' || severity === 'HIGH') return 'urgent'
+    if (status === 'INVESTIGATING' || status === 'CONFIRMED') return 'in-progress'
+    if (status === 'RESOLVED' || status === 'CLOSED') return 'closed'
+    return 'open'
+  }
+
+  // Stats cards avec données réelles ou par défaut
+  const stats = dashboardStats ? [
+    {
+      title: t('dashboard.totalEvents'),
+      value: dashboardStats.totalEvents.toLocaleString(),
+      change: 12,
+      icon: <Activity className="w-5 h-5" />,
+      color: 'from-emerald-500 to-teal-600',
+      bgLight: 'bg-emerald-50',
+      textColor: 'text-emerald-600'
+    },
+    {
+      title: t('dashboard.inProgress'),
+      value: dashboardStats.upcomingEvents.toLocaleString(),
+      change: -5,
+      icon: <Clock className="w-5 h-5" />,
+      color: 'from-blue-500 to-indigo-600',
+      bgLight: 'bg-blue-50',
+      textColor: 'text-blue-600'
+    },
+    {
+      title: t('dashboard.activeAlerts'),
+      value: (dashboardStats.criticalEvents || dashboardStats.upcomingEvents).toString(),
+      change: 8,
+      icon: <AlertTriangle className="w-5 h-5" />,
+      color: 'from-amber-500 to-orange-600',
+      bgLight: 'bg-amber-50',
+      textColor: 'text-amber-600'
+    },
+    {
+      title: t('dashboard.confirmedOutbreaks'),
+      value: (dashboardStats.highEvents || Math.floor(dashboardStats.totalEvents * 0.05)).toString(),
+      change: -15,
+      icon: <AlertTriangle className="w-5 h-5" />,
+      color: 'from-rose-500 to-red-600',
+      bgLight: 'bg-rose-50',
+      textColor: 'text-rose-600'
+    },
+  ] : [
+    { title: t('dashboard.totalEvents'), value: '-', change: 0, icon: <Activity className="w-5 h-5" />, color: 'from-emerald-500 to-teal-600', bgLight: 'bg-emerald-50', textColor: 'text-emerald-600' },
+    { title: t('dashboard.inProgress'), value: '-', change: 0, icon: <Clock className="w-5 h-5" />, color: 'from-blue-500 to-indigo-600', bgLight: 'bg-blue-50', textColor: 'text-blue-600' },
+    { title: t('dashboard.activeAlerts'), value: '-', change: 0, icon: <AlertTriangle className="w-5 h-5" />, color: 'from-amber-500 to-orange-600', bgLight: 'bg-amber-50', textColor: 'text-amber-600' },
+    { title: t('dashboard.confirmedOutbreaks'), value: '-', change: 0, icon: <AlertTriangle className="w-5 h-5" />, color: 'from-rose-500 to-red-600', bgLight: 'bg-rose-50', textColor: 'text-rose-600' },
   ]
 
-  const events = [
-    { code: 'EVT-2025-001', title: 'Suspicion PPA - Ferme Mbanga', location: 'Littoral', status: 'urgent', date: '26 Jan', priority: 1 },
-    { code: 'EVT-2025-002', title: 'Campagne vaccination bovine', location: 'Nord', status: 'in-progress', date: '25 Jan', priority: 2 },
-    { code: 'EVT-2025-003', title: 'Inspection sanitaire marché', location: 'Centre', status: 'open', date: '24 Jan', priority: 3 },
-    { code: 'EVT-2024-198', title: 'Foyer grippe aviaire', location: 'Ouest', status: 'closed', date: '20 Jan', priority: 4 },
+  // Formater les événements pour l'affichage
+  const events = recentEvents.length > 0 ? recentEvents.map(event => ({
+    code: event.code,
+    title: event.title,
+    location: event.location || 'Non spécifié',
+    status: mapEventStatus(event.status, event.severity),
+    date: new Date(event.reportedAt).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' }),
+    priority: event.severity === 'CRITICAL' ? 1 : event.severity === 'HIGH' ? 2 : event.severity === 'MEDIUM' ? 3 : 4,
+  })) : [
+    { code: 'EVT-2025-001', title: 'Chargement...', location: '-', status: 'open', date: '-', priority: 1 },
   ]
 
   const statusConfig: Record<string, { bg: string; text: string; dot: string }> = {
@@ -1085,13 +1243,28 @@ function Dashboard({ userSession }: { userSession: UserSession | null }) {
     closed: t('status.closed'),
   }
 
-  const regions = [
-    { name: 'Adamaoua', events: 23, color: 'bg-emerald-500' },
-    { name: 'Centre', events: 45, color: 'bg-blue-500' },
-    { name: 'Est', events: 12, color: 'bg-purple-500' },
-    { name: 'Extrême-Nord', events: 67, color: 'bg-orange-500' },
-    { name: 'Littoral', events: 34, color: 'bg-teal-500' },
-    { name: 'Nord', events: 56, color: 'bg-rose-500' },
+  const regions = regionStats.length > 0 ? regionStats : [
+    { name: 'Adamaoua', events: 0, color: 'bg-emerald-500' },
+    { name: 'Centre', events: 0, color: 'bg-blue-500' },
+    { name: 'Est', events: 0, color: 'bg-purple-500' },
+    { name: 'Extrême-Nord', events: 0, color: 'bg-orange-500' },
+    { name: 'Littoral', events: 0, color: 'bg-teal-500' },
+    { name: 'Nord', events: 0, color: 'bg-rose-500' },
+  ]
+
+  const maxRegionEvents = Math.max(...regions.map(r => r.events), 1)
+
+  // Bottom stats avec données réelles
+  const bottomStats = dashboardStats ? [
+    { label: 'Utilisateurs actifs', value: dashboardStats.activeUsers.toLocaleString(), icon: <Users className="w-5 h-5" /> },
+    { label: 'Procédures actives', value: dashboardStats.activeProcedures.toLocaleString(), icon: <ClipboardList className="w-5 h-5" /> },
+    { label: 'Articles publiés', value: dashboardStats.publishedArticles.toLocaleString(), icon: <BookOpen className="w-5 h-5" /> },
+    { label: 'Soumissions formulaires', value: dashboardStats.formSubmissions.toLocaleString(), icon: <FileText className="w-5 h-5" /> },
+  ] : [
+    { label: 'Utilisateurs actifs', value: '-', icon: <Users className="w-5 h-5" /> },
+    { label: 'Procédures actives', value: '-', icon: <ClipboardList className="w-5 h-5" /> },
+    { label: 'Articles publiés', value: '-', icon: <BookOpen className="w-5 h-5" /> },
+    { label: 'Soumissions formulaires', value: '-', icon: <FileText className="w-5 h-5" /> },
   ]
 
   return (
@@ -1116,10 +1289,16 @@ function Dashboard({ userSession }: { userSession: UserSession | null }) {
           </div>
 
           <div className="flex flex-wrap gap-3">
-            <button className="flex items-center gap-2 px-5 py-3 bg-white text-emerald-700 font-semibold rounded-xl hover:bg-emerald-50 transition-all shadow-lg hover:shadow-xl hover:-translate-y-0.5">
+            <button
+              onClick={() => onNavigate?.('events-inprogress')}
+              className="flex items-center gap-2 px-5 py-3 bg-white text-emerald-700 font-semibold rounded-xl hover:bg-emerald-50 transition-all shadow-lg hover:shadow-xl hover:-translate-y-0.5"
+            >
               <Activity className="w-5 h-5" /> {t('dashboard.newEvent')}
             </button>
-            <button className="flex items-center gap-2 px-5 py-3 bg-white/10 backdrop-blur-sm text-white font-semibold rounded-xl hover:bg-white/20 transition-all border border-white/20">
+            <button
+              onClick={() => onNavigate?.('analytics')}
+              className="flex items-center gap-2 px-5 py-3 bg-white/10 backdrop-blur-sm text-white font-semibold rounded-xl hover:bg-white/20 transition-all border border-white/20"
+            >
               <BarChart3 className="w-5 h-5" /> {t('dashboard.report')}
             </button>
           </div>
@@ -1174,7 +1353,10 @@ function Dashboard({ userSession }: { userSession: UserSession | null }) {
                 <p className="text-xs text-slate-500">4 nouveaux aujourd'hui</p>
               </div>
             </div>
-            <button className="flex items-center gap-2 text-sm font-semibold text-emerald-600 hover:bg-emerald-50 px-4 py-2 rounded-xl transition-colors">
+            <button
+              onClick={() => onNavigate?.('events-inprogress')}
+              className="flex items-center gap-2 text-sm font-semibold text-emerald-600 hover:bg-emerald-50 px-4 py-2 rounded-xl transition-colors"
+            >
               {t('dashboard.viewAll')} <ArrowRight className="w-4 h-4" />
             </button>
           </div>
@@ -1236,7 +1418,7 @@ function Dashboard({ userSession }: { userSession: UserSession | null }) {
                 <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
                   <div
                     className={`h-full ${region.color} rounded-full transition-all duration-500 group-hover:opacity-80`}
-                    style={{ width: `${(region.events / 70) * 100}%` }}
+                    style={{ width: `${(region.events / maxRegionEvents) * 100}%` }}
                   />
                 </div>
               </div>
@@ -1259,13 +1441,14 @@ function Dashboard({ userSession }: { userSession: UserSession | null }) {
         </div>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           {[
-            { icon: <Activity className="w-6 h-6" />, label: t('dashboard.newEvent'), color: 'from-emerald-500 to-teal-600', hoverBg: 'hover:bg-emerald-50' },
-            { icon: <Syringe className="w-6 h-6" />, label: t('dashboard.vaccination'), color: 'from-green-500 to-emerald-600', hoverBg: 'hover:bg-green-50' },
-            { icon: <Users className="w-6 h-6" />, label: t('dashboard.user'), color: 'from-blue-500 to-indigo-600', hoverBg: 'hover:bg-blue-50' },
-            { icon: <FileText className="w-6 h-6" />, label: t('dashboard.report'), color: 'from-purple-500 to-violet-600', hoverBg: 'hover:bg-purple-50' },
+            { icon: <Activity className="w-6 h-6" />, label: t('dashboard.newEvent'), color: 'from-emerald-500 to-teal-600', hoverBg: 'hover:bg-emerald-50', page: 'events-inprogress' },
+            { icon: <ClipboardList className="w-6 h-6" />, label: 'Procédures', color: 'from-green-500 to-emerald-600', hoverBg: 'hover:bg-green-50', page: 'procedures' },
+            { icon: <Users className="w-6 h-6" />, label: t('dashboard.user'), color: 'from-blue-500 to-indigo-600', hoverBg: 'hover:bg-blue-50', page: 'users' },
+            { icon: <BarChart3 className="w-6 h-6" />, label: t('dashboard.report'), color: 'from-purple-500 to-violet-600', hoverBg: 'hover:bg-purple-50', page: 'analytics' },
           ].map((action, i) => (
             <button
               key={i}
+              onClick={() => onNavigate?.(action.page)}
               className={`group relative flex flex-col items-center gap-3 p-5 bg-white rounded-2xl shadow-sm border border-slate-100 ${action.hoverBg} hover:shadow-lg hover:-translate-y-1 transition-all duration-300 text-center overflow-hidden`}
             >
               <div className={`w-14 h-14 rounded-2xl bg-gradient-to-br ${action.color} flex items-center justify-center text-white shadow-lg group-hover:scale-110 transition-transform`}>
@@ -1283,12 +1466,7 @@ function Dashboard({ userSession }: { userSession: UserSession | null }) {
       {/* Bottom Stats Bar */}
       <div className="bg-gradient-to-r from-slate-800 to-slate-900 rounded-2xl p-6 animate-slide-up" style={{ animationDelay: '700ms' }}>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
-          {[
-            { label: 'Utilisateurs actifs', value: '234', icon: <Users className="w-5 h-5" /> },
-            { label: 'Rapports générés', value: '1,892', icon: <FileText className="w-5 h-5" /> },
-            { label: 'Vaccinations', value: '45,672', icon: <Syringe className="w-5 h-5" /> },
-            { label: 'Temps de réponse', value: '2.4h', icon: <Clock className="w-5 h-5" /> },
-          ].map((item, i) => (
+          {bottomStats.map((item, i) => (
             <div key={i} className="text-center">
               <div className="inline-flex items-center justify-center w-10 h-10 bg-white/10 rounded-xl text-emerald-400 mb-2">
                 {item.icon}
@@ -1299,6 +1477,16 @@ function Dashboard({ userSession }: { userSession: UserSession | null }) {
           ))}
         </div>
       </div>
+
+      {/* Loading overlay */}
+      {loading && (
+        <div className="fixed inset-0 bg-white/50 flex items-center justify-center z-50">
+          <div className="flex flex-col items-center gap-3">
+            <RefreshCw className="w-8 h-8 text-emerald-500 animate-spin" />
+            <p className="text-slate-600">Chargement du tableau de bord...</p>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -4536,19 +4724,49 @@ function FormBuilderPage() {
   const [formError, setFormError] = useState<string | null>(null)
   const [showFormSettings, setShowFormSettings] = useState(false)
 
-  // Charger les formulaires depuis localStorage (simulation)
-  useEffect(() => {
-    const savedForms = localStorage.getItem('form_builder_forms')
-    if (savedForms) {
-      setForms(JSON.parse(savedForms))
-    }
-  }, [])
+  const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 
-  // Sauvegarder les formulaires dans localStorage
-  const saveForms = (updatedForms: FormSchema[]) => {
-    setForms(updatedForms)
-    localStorage.setItem('form_builder_forms', JSON.stringify(updatedForms))
+  const getHeaders = () => {
+    const authData = localStorage.getItem('auth_token')
+    const token = authData ? JSON.parse(authData).token : null
+    return { 'Content-Type': 'application/json', ...(token && { 'Authorization': `Bearer ${token}` }) }
   }
+
+  // Charger les formulaires depuis l'API
+  const loadFormsFromAPI = async () => {
+    try {
+      const response = await fetch(`${API_URL}/api/forms`, { headers: getHeaders() })
+      if (response.ok) {
+        const data = await response.json()
+        // API returns { success: true, data: { items: [...], ... } }
+        const rawForms = data.data?.items || data.items || data.data || []
+        console.log('Forms API response:', data, 'rawForms:', rawForms)
+        // Transform API response to match frontend schema
+        const transformedForms = (Array.isArray(rawForms) ? rawForms : []).map((f: any) => ({
+          id: f.id,
+          code: f.code,
+          name: f.name || f.title || 'Sans nom',
+          description: f.description || '',
+          sections: f.sections || [],
+          settings: {
+            submitButtonText: 'Envoyer',
+            successMessage: 'Formulaire envoyé avec succès !',
+            saveAsDraft: true,
+            multiStep: false,
+          },
+          createdAt: f.createdAt || f.created_at,
+          updatedAt: f.updatedAt || f.updated_at,
+        }))
+        setForms(transformedForms)
+      }
+    } catch (error) {
+      console.error('Error loading forms:', error)
+    }
+  }
+
+  useEffect(() => {
+    loadFormsFromAPI()
+  }, [])
 
   // Créer un nouveau formulaire
   const createNewForm = () => {
@@ -4584,51 +4802,121 @@ function FormBuilderPage() {
     setView('editor')
   }
 
-  // Dupliquer un formulaire
-  const duplicateForm = (form: FormSchema) => {
-    const duplicated: FormSchema = {
-      ...form,
-      id: `form_${Date.now()}`,
-      name: `${form.name} (copie)`,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
+  // Dupliquer un formulaire via API
+  const duplicateForm = async (form: FormSchema) => {
+    try {
+      const response = await fetch(`${API_URL}/api/forms/${form.id}/duplicate`, {
+        method: 'POST',
+        headers: getHeaders()
+      })
+      if (response.ok) {
+        setFormSuccess('Formulaire dupliqué avec succès')
+        loadFormsFromAPI()
+        setTimeout(() => setFormSuccess(null), 3000)
+      } else {
+        setFormError('Erreur lors de la duplication')
+      }
+    } catch (error) {
+      console.error('Error duplicating form:', error)
+      setFormError('Erreur lors de la duplication')
     }
-    saveForms([...forms, duplicated])
-    setFormSuccess('Formulaire dupliqué avec succès')
-    setTimeout(() => setFormSuccess(null), 3000)
   }
 
-  // Supprimer un formulaire
-  const deleteForm = (formId: string) => {
+  // Supprimer un formulaire via API
+  const deleteForm = async (formId: string) => {
     if (confirm('Êtes-vous sûr de vouloir supprimer ce formulaire ?')) {
-      saveForms(forms.filter((f) => f.id !== formId))
-      setFormSuccess('Formulaire supprimé')
-      setTimeout(() => setFormSuccess(null), 3000)
+      try {
+        const response = await fetch(`${API_URL}/api/forms/${formId}`, {
+          method: 'DELETE',
+          headers: getHeaders()
+        })
+        if (response.ok) {
+          setFormSuccess('Formulaire supprimé')
+          loadFormsFromAPI()
+          setTimeout(() => setFormSuccess(null), 3000)
+        } else {
+          setFormError('Erreur lors de la suppression')
+        }
+      } catch (error) {
+        console.error('Error deleting form:', error)
+        setFormError('Erreur lors de la suppression')
+      }
     }
   }
 
-  // Sauvegarder le formulaire en cours
-  const saveCurrentForm = () => {
+  // Sauvegarder le formulaire en cours via API
+  const saveCurrentForm = async () => {
     if (!currentForm) return
 
     setIsSaving(true)
-    const updatedForm = { ...currentForm, updatedAt: new Date().toISOString() }
-    const existingIndex = forms.findIndex((f) => f.id === updatedForm.id)
+    setFormError(null)
 
-    if (existingIndex >= 0) {
-      const updatedForms = [...forms]
-      updatedForms[existingIndex] = updatedForm
-      saveForms(updatedForms)
-    } else {
-      saveForms([...forms, updatedForm])
-    }
+    try {
+      const isNewForm = !currentForm.id || currentForm.id.startsWith('form_')
+      // Field type mapping
+      const fieldTypeMap: Record<string, string> = {
+        'text': '5d853453-c20b-4ead-bbe4-f580aa28b81c',
+        'textarea': '2f360a2a-a79f-4a5e-92f5-ebe01c74c79c',
+        'number': 'a13d55cd-3900-4990-a6dd-f6ddadcdd258',
+        'email': '31ac968b-70f7-43fd-8df6-bd60cffa57fe',
+        'phone': '1f2fb69c-1c06-4345-8dc5-9abf92aab7ad',
+        'select': 'c32d7ec1-4387-4bf5-89a1-f5b9358f73a1',
+        'multiselect': '1a047643-ecd1-4715-ba59-85e14523b0e3',
+        'radio': '70cb20a2-577e-4a01-80b6-39c0ce1b0b75',
+        'checkbox': '3caf483e-1253-4e2e-badb-b0e357d2f92a',
+        'date': '815c78d0-89fc-4e01-ab60-e2d4e3ea500d',
+      }
 
-    setCurrentForm(updatedForm)
-    setFormSuccess('Formulaire sauvegardé avec succès')
-    setTimeout(() => {
-      setFormSuccess(null)
+      const payload = {
+        code: currentForm.code || `FORM_${Date.now()}`,
+        name: currentForm.name,
+        description: currentForm.description || undefined,
+        type: 'PARAMETER',
+        layoutColumns: 2,
+        sections: currentForm.sections?.map((section, idx) => ({
+          title: section.title,
+          sortOrder: idx + 1,
+          columns: section.columns || 1,
+          fields: section.fields?.map((field, fieldIdx) => ({
+            code: field.id,
+            label: field.label,
+            fieldTypeId: fieldTypeMap[field.type] || fieldTypeMap['text'],
+            placeholder: field.placeholder || undefined,
+            isRequired: field.required || false,
+            sortOrder: fieldIdx + 1,
+            columnSpan: field.width === 'full' ? 2 : 1,
+            options: field.options || undefined
+          })) || []
+        })) || []
+      }
+
+      const url = isNewForm
+        ? `${API_URL}/api/forms`
+        : `${API_URL}/api/forms/${currentForm.id}`
+
+      const response = await fetch(url, {
+        method: isNewForm ? 'POST' : 'PUT',
+        headers: getHeaders(),
+        body: JSON.stringify(payload)
+      })
+
+      if (response.ok) {
+        const result = await response.json()
+        const savedForm = result.data || result
+        setCurrentForm({ ...currentForm, id: savedForm.id })
+        setFormSuccess('Formulaire sauvegardé avec succès')
+        loadFormsFromAPI() // Reload list
+        setTimeout(() => setFormSuccess(null), 2000)
+      } else {
+        const errorData = await response.json()
+        setFormError(errorData.message || 'Erreur lors de la sauvegarde')
+      }
+    } catch (error) {
+      console.error('Error saving form:', error)
+      setFormError('Erreur lors de la sauvegarde du formulaire')
+    } finally {
       setIsSaving(false)
-    }, 2000)
+    }
   }
 
   // Générer un ID unique pour les champs
@@ -5943,12 +6231,13 @@ interface Procedure {
   code: string
   name: string
   description?: string
+  type: 'STANDARD' | 'EMERGENCY' | 'ADMINISTRATIVE' | 'CLINICAL' | 'SAFETY'
   categoryId?: string
   category?: { id: string; name: string; color: string }
   keywords?: string
   checklist?: string
   visibleBy?: string[]
-  triggerType: 'MANUAL' | 'AUTOMATIC'
+  triggerType: 'MANUAL' | 'EVENT_CREATED' | 'EVENT_STATUS_CHANGE' | 'SCHEDULED' | 'CONDITION_BASED'
   triggerConfig?: {
     frequency?: 'daily' | 'weekly' | 'monthly'
     dayOfWeek?: number
@@ -5957,6 +6246,7 @@ interface Procedure {
   }
   isActive: boolean
   steps?: ProcedureStepData[]
+  stepsCount?: number
   createdAt: string
   updatedAt: string
 }
@@ -6000,7 +6290,7 @@ interface FormItem {
   name: string
 }
 
-type ProcedureView = 'list' | 'form' | 'steps'
+type ProcedureView = 'list' | 'form' | 'steps' | 'trash'
 
 function ProceduresPage() {
   const { t } = useTranslation()
@@ -6021,11 +6311,12 @@ function ProceduresPage() {
   // Form state for procedure
   const [formData, setFormData] = useState({
     name: '',
+    description: '',
+    type: 'STANDARD' as 'STANDARD' | 'EMERGENCY' | 'ADMINISTRATIVE' | 'CLINICAL' | 'SAFETY',
     categoryId: '',
     keywords: '',
-    checklist: '',
     visibleBy: [] as string[],
-    triggerType: 'MANUAL' as 'MANUAL' | 'AUTOMATIC',
+    triggerType: 'MANUAL' as 'MANUAL' | 'EVENT_CREATED' | 'EVENT_STATUS_CHANGE' | 'SCHEDULED' | 'CONDITION_BASED',
     triggerConfig: {
       frequency: 'daily' as 'daily' | 'weekly' | 'monthly',
       dayOfWeek: 1,
@@ -6042,16 +6333,33 @@ function ProceduresPage() {
   const [showOperationsModal, setShowOperationsModal] = useState(false)
   const [editingStepIndex, setEditingStepIndex] = useState<number | null>(null)
   const [operationForm, setOperationForm] = useState({ name: '', description: '', formId: '' })
+  const [editingOperationIndex, setEditingOperationIndex] = useState<number | null>(null)
 
   // Autocomplete states
   const [visibleBySearch, setVisibleBySearch] = useState('')
   const [showVisibleByDropdown, setShowVisibleByDropdown] = useState(false)
   const [responsibleSearch, setResponsibleSearch] = useState('')
   const [showResponsibleDropdown, setShowResponsibleDropdown] = useState<number | null>(null)
+  const [formSearch, setFormSearch] = useState('')
+  const [showFormDropdown, setShowFormDropdown] = useState(false)
 
   // Delete modal
   const [showDeleteModal, setShowDeleteModal] = useState(false)
   const [deletingProcedure, setDeletingProcedure] = useState<Procedure | null>(null)
+
+  // Trash state
+  const [deletedProcedures, setDeletedProcedures] = useState<Procedure[]>([])
+  const [trashCount, setTrashCount] = useState(0)
+  const [loadingTrash, setLoadingTrash] = useState(false)
+  const [showPermanentDeleteModal, setShowPermanentDeleteModal] = useState(false)
+  const [permanentDeletingProcedure, setPermanentDeletingProcedure] = useState<Procedure | null>(null)
+
+  // Toast notification
+  const [toast, setToast] = useState<{ show: boolean; message: string; type: 'success' | 'error' }>({ show: false, message: '', type: 'success' })
+  const showToast = (message: string, type: 'success' | 'error' = 'success') => {
+    setToast({ show: true, message, type })
+    setTimeout(() => setToast({ show: false, message: '', type: 'success' }), 4000)
+  }
 
   const getHeaders = () => {
     const authData = localStorage.getItem('auth_token')
@@ -6059,17 +6367,37 @@ function ProceduresPage() {
     return { 'Content-Type': 'application/json', ...(token && { 'Authorization': `Bearer ${token}` }) }
   }
 
+  // Load trash count
+  const loadTrashCount = async () => {
+    try {
+      const response = await fetch(`${API_URL}/api/procedures?isActive=false`, { headers: getHeaders() })
+      if (response.ok) {
+        const data = await response.json()
+        const items = data.data || data.items || []
+        setTrashCount(items.length)
+      }
+    } catch (error) {
+      console.error('Error loading trash count:', error)
+    }
+  }
+
   // Load data
   const loadProcedures = async () => {
     try {
       setLoading(true)
-      const response = await fetch(`${API_URL}/api/procedures`, { headers: getHeaders() })
+      const response = await fetch(`${API_URL}/api/procedures?isActive=true`, { headers: getHeaders() })
       if (response.ok) {
         const data = await response.json()
-        setProcedures(data.data?.items || data.items || [])
+        // API returns { success: true, data: [...], pagination: {...} }
+        const items = data.data || data.items || []
+        console.log('Loaded procedures:', items)
+        setProcedures(items)
       }
+      // Also load trash count
+      loadTrashCount()
     } catch (error) {
       console.error('Error loading procedures:', error)
+      showToast('Erreur lors du chargement des procédures', 'error')
     } finally {
       setLoading(false)
     }
@@ -6080,7 +6408,14 @@ function ProceduresPage() {
       const response = await fetch(`${API_URL}/api/config/event-categories`, { headers: getHeaders() })
       if (response.ok) {
         const data = await response.json()
-        setCategories(data.data || data || [])
+        const rawCategories = data.data || data || []
+        const transformed = rawCategories.map((cat: any) => ({
+          id: cat.id,
+          code: cat.code,
+          name: cat.name,
+          color: cat.color
+        }))
+        setCategories(transformed)
       }
     } catch (error) {
       console.error('Error loading categories:', error)
@@ -6113,7 +6448,15 @@ function ProceduresPage() {
       const response = await fetch(`${API_URL}/api/forms`, { headers: getHeaders() })
       if (response.ok) {
         const data = await response.json()
-        setForms(data.data?.items || data.items || [])
+        const rawForms = data.data?.items || data.data || data.items || data || []
+        // Transform forms - API may use 'title' instead of 'name'
+        const transformedForms = (Array.isArray(rawForms) ? rawForms : []).map((f: any) => ({
+          id: f.id,
+          code: f.code,
+          name: f.name || f.title || 'Sans nom'
+        }))
+        console.log('Loaded forms:', transformedForms)
+        setForms(transformedForms)
       }
     } catch (error) {
       console.error('Error loading forms:', error)
@@ -6140,8 +6483,13 @@ function ProceduresPage() {
   const handleNewProcedure = () => {
     setSelectedProcedure(null)
     setFormData({
-      name: '', categoryId: '', keywords: '', checklist: '',
-      visibleBy: [], triggerType: 'MANUAL',
+      name: '',
+      description: '',
+      type: 'STANDARD',
+      categoryId: '',
+      keywords: '',
+      visibleBy: [],
+      triggerType: 'MANUAL',
       triggerConfig: { frequency: 'daily', dayOfWeek: 1, dayOfMonth: 1, time: '09:00' }
     })
     setCurrentView('form')
@@ -6151,9 +6499,10 @@ function ProceduresPage() {
     setSelectedProcedure(procedure)
     setFormData({
       name: procedure.name,
+      description: procedure.description || '',
+      type: procedure.type || 'STANDARD',
       categoryId: procedure.categoryId || '',
       keywords: procedure.keywords || '',
-      checklist: procedure.checklist || '',
       visibleBy: procedure.visibleBy || [],
       triggerType: procedure.triggerType,
       triggerConfig: procedure.triggerConfig || { frequency: 'daily', dayOfWeek: 1, dayOfMonth: 1, time: '09:00' }
@@ -6161,10 +6510,35 @@ function ProceduresPage() {
     setCurrentView('form')
   }
 
-  const handleManageSteps = (procedure: Procedure) => {
+  const handleManageSteps = async (procedure: Procedure) => {
     setSelectedProcedure(procedure)
-    setSteps(procedure.steps || [])
     setCurrentView('steps')
+    // Load steps from API
+    try {
+      const response = await fetch(`${API_URL}/api/procedures/${procedure.id}/steps`, { headers: getHeaders() })
+      if (response.ok) {
+        const data = await response.json()
+        const stepsData = data.data || data || []
+        // Transform to match frontend format
+        const transformedSteps = stepsData.map((step: any) => ({
+          id: step.id,
+          name: step.name,
+          description: step.description,
+          stepNumber: step.stepNumber || step.step_number || step.stepOrder || step.step_order,
+          durationHours: step.durationHours || step.duration_hours,
+          responsibles: step.assigneeId ? [step.assigneeId] : [],
+          operations: step.operations || []
+        }))
+        setSteps(transformedSteps)
+      } else {
+        setSteps([])
+        showToast('Erreur lors du chargement des étapes', 'error')
+      }
+    } catch (error) {
+      console.error('Error loading steps:', error)
+      setSteps([])
+      showToast('Erreur lors du chargement des étapes', 'error')
+    }
   }
 
   const handleBack = () => {
@@ -6174,11 +6548,31 @@ function ProceduresPage() {
 
   // Save procedure
   const handleSaveProcedure = async () => {
+    if (!formData.name.trim()) {
+      showToast('Le nom de la procédure est requis', 'error')
+      return
+    }
+    // Check for duplicate name
+    const duplicateName = procedures.find(p =>
+      p.name.toLowerCase() === formData.name.trim().toLowerCase() &&
+      p.id !== selectedProcedure?.id
+    )
+    if (duplicateName) {
+      showToast('Une procédure avec ce nom existe déjà', 'error')
+      return
+    }
     try {
-      const payload = {
-        ...formData,
-        code: selectedProcedure?.code || `PROC_${Date.now()}`,
-        isActive: true
+      const payload: Record<string, unknown> = {
+        name: formData.name,
+        description: formData.description || undefined,
+        type: formData.type,
+        triggerType: formData.triggerType,
+        categoryId: formData.categoryId || undefined,
+        triggerConfig: formData.triggerType !== 'MANUAL' ? formData.triggerConfig : undefined
+      }
+      // Add code only for new procedures
+      if (!selectedProcedure) {
+        payload.code = `PROC_${Date.now()}`
       }
       const url = selectedProcedure ? `${API_URL}/api/procedures/${selectedProcedure.id}` : `${API_URL}/api/procedures`
       const response = await fetch(url, {
@@ -6187,27 +6581,64 @@ function ProceduresPage() {
         body: JSON.stringify(payload)
       })
       if (response.ok) {
+        showToast(selectedProcedure ? 'Procédure modifiée avec succès' : 'Procédure créée avec succès', 'success')
         loadProcedures()
         setCurrentView('list')
+      } else {
+        const errorData = await response.json()
+        console.error('Error saving procedure:', errorData)
+        showToast(errorData.message || 'Erreur lors de l\'enregistrement', 'error')
       }
     } catch (error) {
       console.error('Error saving procedure:', error)
+      showToast('Erreur lors de l\'enregistrement', 'error')
     }
   }
 
   // Save steps
   const handleSaveSteps = async () => {
     if (!selectedProcedure) return
+    // Validate steps
+    for (const step of steps) {
+      if (!step.name.trim()) {
+        showToast('Chaque étape doit avoir un nom', 'error')
+        return
+      }
+    }
     try {
-      await fetch(`${API_URL}/api/procedures/${selectedProcedure.id}/steps/bulk`, {
+      // Transform steps to match backend format
+      const transformedSteps = steps.map((step, index) => ({
+        name: step.name,
+        description: step.description || undefined,
+        stepNumber: index + 1,
+        durationHours: step.durationHours || undefined,
+        isOptional: false,
+        assigneeType: 'AUTO' as const,
+        assigneeId: step.responsibles?.[0] || undefined, // Use first responsible as assignee
+        operations: step.operations?.map((op, opIndex) => ({
+          name: op.name,
+          description: op.description || undefined,
+          formId: op.formId || undefined,
+          sortOrder: opIndex + 1
+        }))
+      }))
+      const response = await fetch(`${API_URL}/api/procedures/${selectedProcedure.id}/steps/bulk`, {
         method: 'PUT',
         headers: getHeaders(),
-        body: JSON.stringify({ steps })
+        body: JSON.stringify({ steps: transformedSteps })
       })
-      loadProcedures()
-      setCurrentView('list')
+      if (response.ok) {
+        showToast('Étapes enregistrées avec succès', 'success')
+        loadProcedures()
+        setCurrentView('list')
+      } else {
+        const errorData = await response.json()
+        console.error('Error saving steps:', errorData)
+        showToast(errorData.message || 'Erreur lors de l\'enregistrement des étapes', 'error')
+      }
     } catch (error) {
       console.error('Error saving steps:', error)
+      showToast('Erreur lors de l\'enregistrement des étapes', 'error')
     }
   }
 
@@ -6215,13 +6646,83 @@ function ProceduresPage() {
   const handleDelete = async () => {
     if (!deletingProcedure) return
     try {
-      await fetch(`${API_URL}/api/procedures/${deletingProcedure.id}`, { method: 'DELETE', headers: getHeaders() })
-      setShowDeleteModal(false)
-      setDeletingProcedure(null)
-      loadProcedures()
+      const response = await fetch(`${API_URL}/api/procedures/${deletingProcedure.id}`, { method: 'DELETE', headers: getHeaders() })
+      if (response.ok) {
+        showToast('Procédure déplacée dans la corbeille', 'success')
+        setShowDeleteModal(false)
+        setDeletingProcedure(null)
+        loadProcedures()
+      } else {
+        const errorData = await response.json()
+        showToast(errorData.message || 'Erreur lors de la suppression', 'error')
+      }
     } catch (error) {
       console.error('Error deleting procedure:', error)
+      showToast('Erreur lors de la suppression', 'error')
     }
+  }
+
+  // Load deleted procedures (trash)
+  const loadDeletedProcedures = async () => {
+    try {
+      setLoadingTrash(true)
+      const response = await fetch(`${API_URL}/api/procedures?isActive=false`, { headers: getHeaders() })
+      if (response.ok) {
+        const data = await response.json()
+        const items = data.data || data.items || []
+        setDeletedProcedures(items)
+        setTrashCount(items.length)
+      }
+    } catch (error) {
+      console.error('Error loading deleted procedures:', error)
+      showToast('Erreur lors du chargement de la corbeille', 'error')
+    } finally {
+      setLoadingTrash(false)
+    }
+  }
+
+  // Restore procedure
+  const handleRestore = async (procedure: Procedure) => {
+    try {
+      const response = await fetch(`${API_URL}/api/procedures/${procedure.id}/restore`, { method: 'PUT', headers: getHeaders() })
+      if (response.ok) {
+        showToast('Procédure restaurée avec succès', 'success')
+        loadDeletedProcedures()
+        loadProcedures() // Reload main list to include restored procedure
+      } else {
+        const errorData = await response.json()
+        showToast(errorData.message || 'Erreur lors de la restauration', 'error')
+      }
+    } catch (error) {
+      console.error('Error restoring procedure:', error)
+      showToast('Erreur lors de la restauration', 'error')
+    }
+  }
+
+  // Permanent delete
+  const handlePermanentDelete = async () => {
+    if (!permanentDeletingProcedure) return
+    try {
+      const response = await fetch(`${API_URL}/api/procedures/${permanentDeletingProcedure.id}/permanent`, { method: 'DELETE', headers: getHeaders() })
+      if (response.ok) {
+        showToast('Procédure supprimée définitivement', 'success')
+        setShowPermanentDeleteModal(false)
+        setPermanentDeletingProcedure(null)
+        loadDeletedProcedures()
+      } else {
+        const errorData = await response.json()
+        showToast(errorData.message || 'Erreur lors de la suppression', 'error')
+      }
+    } catch (error) {
+      console.error('Error permanent deleting procedure:', error)
+      showToast('Erreur lors de la suppression', 'error')
+    }
+  }
+
+  // Go to trash view
+  const handleGoToTrash = () => {
+    loadDeletedProcedures()
+    setCurrentView('trash')
   }
 
   // Steps management
@@ -6255,24 +6756,68 @@ function ProceduresPage() {
   const openOperationsModal = (stepIndex: number) => {
     setEditingStepIndex(stepIndex)
     setOperationForm({ name: '', description: '', formId: '' })
+    setEditingOperationIndex(null)
     setShowOperationsModal(true)
+  }
+
+  const closeOperationsModal = () => {
+    setShowOperationsModal(false)
+    setEditingOperationIndex(null)
+    setOperationForm({ name: '', description: '', formId: '' })
+    setFormSearch('')
+    setShowFormDropdown(false)
   }
 
   const addOperation = () => {
     if (editingStepIndex === null || !operationForm.name) return
     const step = steps[editingStepIndex]
-    const newOperation: StepOperation = {
-      ...operationForm,
-      formName: forms.find(f => f.id === operationForm.formId)?.name,
-      sortOrder: (step.operations?.length || 0) + 1
+
+    if (editingOperationIndex !== null) {
+      // Edit existing operation
+      const updatedOperations = step.operations?.map((op, i) =>
+        i === editingOperationIndex ? {
+          ...operationForm,
+          formName: forms.find(f => f.id === operationForm.formId)?.name,
+          sortOrder: op.sortOrder
+        } : op
+      )
+      updateStep(editingStepIndex, 'operations', updatedOperations)
+      setEditingOperationIndex(null)
+    } else {
+      // Add new operation
+      const newOperation: StepOperation = {
+        ...operationForm,
+        formName: forms.find(f => f.id === operationForm.formId)?.name,
+        sortOrder: (step.operations?.length || 0) + 1
+      }
+      updateStep(editingStepIndex, 'operations', [...(step.operations || []), newOperation])
     }
-    updateStep(editingStepIndex, 'operations', [...(step.operations || []), newOperation])
+    setOperationForm({ name: '', description: '', formId: '' })
+    setFormSearch('')
+    setShowFormDropdown(false)
+  }
+
+  const editOperation = (opIndex: number) => {
+    if (editingStepIndex === null) return
+    const op = steps[editingStepIndex].operations?.[opIndex]
+    if (op) {
+      setOperationForm({ name: op.name, description: op.description || '', formId: op.formId || '' })
+      setEditingOperationIndex(opIndex)
+    }
+  }
+
+  const cancelEditOperation = () => {
+    setEditingOperationIndex(null)
     setOperationForm({ name: '', description: '', formId: '' })
   }
 
   const removeOperation = (stepIndex: number, opIndex: number) => {
     const step = steps[stepIndex]
     updateStep(stepIndex, 'operations', step.operations?.filter((_, i) => i !== opIndex))
+    if (editingOperationIndex === opIndex) {
+      setEditingOperationIndex(null)
+      setOperationForm({ name: '', description: '', formId: '' })
+    }
   }
 
   // Autocomplete helpers
@@ -6314,14 +6859,37 @@ function ProceduresPage() {
   if (currentView === 'list') {
     return (
       <div className="space-y-6">
+        {/* Toast Notification */}
+        {toast.show && (
+          <div className={`fixed top-4 right-4 z-[100] px-6 py-4 rounded-xl shadow-lg flex items-center gap-3 transition-all ${
+            toast.type === 'success' ? 'bg-green-600 text-white' : 'bg-red-600 text-white'
+          }`}>
+            {toast.type === 'success' ? <Check className="w-5 h-5" /> : <AlertTriangle className="w-5 h-5" />}
+            <span className="font-medium">{toast.message}</span>
+            <button onClick={() => setToast({ ...toast, show: false })} className="ml-2 hover:opacity-80">
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        )}
+
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div>
             <h1 className="text-2xl font-display font-bold text-slate-800">Gestion des Procédures</h1>
             <p className="text-slate-500 mt-1">{filteredProcedures.length} procédure(s)</p>
           </div>
-          <button onClick={handleNewProcedure} className="px-4 py-2 bg-primary-600 text-white rounded-xl hover:bg-primary-700 flex items-center gap-2">
-            <Plus className="w-4 h-4" /> Nouvelle procédure
-          </button>
+          <div className="flex items-center gap-2">
+            <button onClick={handleGoToTrash} className="px-4 py-2 border border-slate-300 text-slate-600 rounded-xl hover:bg-slate-50 flex items-center gap-2 relative">
+              <Archive className="w-4 h-4" /> Corbeille
+              {trashCount > 0 && (
+                <span className="absolute -top-2 -right-2 w-5 h-5 bg-red-500 text-white text-xs font-bold rounded-full flex items-center justify-center">
+                  {trashCount > 99 ? '99+' : trashCount}
+                </span>
+              )}
+            </button>
+            <button onClick={handleNewProcedure} className="px-4 py-2 bg-primary-600 text-white rounded-xl hover:bg-primary-700 flex items-center gap-2">
+              <Plus className="w-4 h-4" /> Nouvelle procédure
+            </button>
+          </div>
         </div>
 
         <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-4">
@@ -6370,11 +6938,11 @@ function ProceduresPage() {
                     <td className="px-4 py-3">
                       <span className={`inline-flex items-center gap-1 text-xs ${proc.triggerType === 'MANUAL' ? 'text-blue-600' : 'text-amber-600'}`}>
                         {proc.triggerType === 'MANUAL' ? <Play className="w-3.5 h-3.5" /> : <Zap className="w-3.5 h-3.5" />}
-                        {proc.triggerType === 'MANUAL' ? 'Manuel' : 'Automatique'}
+                        {proc.triggerType === 'MANUAL' ? 'Manuel' : proc.triggerType === 'SCHEDULED' ? 'Planifié' : 'Auto'}
                       </span>
                     </td>
                     <td className="px-4 py-3">
-                      <span className="text-sm text-slate-600">{proc.steps?.length || 0} étape(s)</span>
+                      <span className="text-sm text-slate-600">{proc.stepsCount || proc.steps?.length || 0} étape(s)</span>
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex items-center justify-end gap-1">
@@ -6420,6 +6988,19 @@ function ProceduresPage() {
   if (currentView === 'form') {
     return (
       <div className="space-y-6">
+        {/* Toast Notification */}
+        {toast.show && (
+          <div className={`fixed top-4 right-4 z-[100] px-6 py-4 rounded-xl shadow-lg flex items-center gap-3 transition-all ${
+            toast.type === 'success' ? 'bg-green-600 text-white' : 'bg-red-600 text-white'
+          }`}>
+            {toast.type === 'success' ? <Check className="w-5 h-5" /> : <AlertTriangle className="w-5 h-5" />}
+            <span className="font-medium">{toast.message}</span>
+            <button onClick={() => setToast({ ...toast, show: false })} className="ml-2 hover:opacity-80">
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        )}
+
         <div className="flex items-center justify-between">
           <h1 className="text-2xl font-display font-bold text-slate-800">
             {selectedProcedure ? 'Modifier la procédure' : 'Nouvelle procédure'}
@@ -6430,7 +7011,7 @@ function ProceduresPage() {
         </div>
 
         <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 space-y-6">
-          {/* Nom + Catégorie sur la même ligne */}
+          {/* Nom + Type sur la même ligne */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1">Nom de la procédure *</label>
@@ -6438,6 +7019,29 @@ function ProceduresPage() {
                 placeholder="Ex: Investigation foyer épidémique"
                 className="w-full px-4 py-2 border border-slate-300 rounded-xl focus:ring-2 focus:ring-primary-500" />
             </div>
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">Type *</label>
+              <select value={formData.type} onChange={(e) => setFormData({ ...formData, type: e.target.value as any })}
+                className="w-full px-4 py-2 border border-slate-300 rounded-xl focus:ring-2 focus:ring-primary-500">
+                <option value="STANDARD">Standard</option>
+                <option value="EMERGENCY">Urgence</option>
+                <option value="ADMINISTRATIVE">Administratif</option>
+                <option value="CLINICAL">Clinique</option>
+                <option value="SAFETY">Sécurité</option>
+              </select>
+            </div>
+          </div>
+
+          {/* Description */}
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">Description</label>
+            <textarea value={formData.description} onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+              rows={2} placeholder="Description de la procédure..."
+              className="w-full px-4 py-2 border border-slate-300 rounded-xl focus:ring-2 focus:ring-primary-500" />
+          </div>
+
+          {/* Catégorie + Mots clés sur la même ligne */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1">Catégorie d'événement</label>
               <select value={formData.categoryId} onChange={(e) => setFormData({ ...formData, categoryId: e.target.value })}
@@ -6448,18 +7052,17 @@ function ProceduresPage() {
                 ))}
               </select>
             </div>
-          </div>
-
-          {/* Mots clés + Visible par sur la même ligne */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1">Mots clés</label>
               <input type="text" value={formData.keywords} onChange={(e) => setFormData({ ...formData, keywords: e.target.value })}
                 placeholder="Ex: épidémie, investigation, terrain"
                 className="w-full px-4 py-2 border border-slate-300 rounded-xl focus:ring-2 focus:ring-primary-500" />
             </div>
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">Visible par</label>
+          </div>
+
+          {/* Visible par */}
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">Visible par</label>
               <div className="relative">
                 <div className="flex flex-wrap items-center gap-1 min-h-[42px] px-2 py-1 border border-slate-300 rounded-xl focus-within:ring-2 focus-within:ring-primary-500 bg-white">
                   {formData.visibleBy.map(id => (
@@ -6491,15 +7094,6 @@ function ProceduresPage() {
                   </div>
                 )}
               </div>
-            </div>
-          </div>
-
-          {/* Check liste */}
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">Check liste</label>
-            <textarea value={formData.checklist} onChange={(e) => setFormData({ ...formData, checklist: e.target.value })}
-              rows={3} placeholder="Liste de vérification (une par ligne)"
-              className="w-full px-4 py-2 border border-slate-300 rounded-xl focus:ring-2 focus:ring-primary-500" />
           </div>
 
           {/* Déclenchement */}
@@ -6513,14 +7107,14 @@ function ProceduresPage() {
                 <span className="text-sm text-slate-700">Manuel</span>
               </label>
               <label className="flex items-center gap-2 cursor-pointer">
-                <input type="radio" name="trigger" checked={formData.triggerType === 'AUTOMATIC'}
-                  onChange={() => setFormData({ ...formData, triggerType: 'AUTOMATIC' })}
+                <input type="radio" name="trigger" checked={formData.triggerType === 'SCHEDULED'}
+                  onChange={() => setFormData({ ...formData, triggerType: 'SCHEDULED' })}
                   className="text-primary-600 focus:ring-primary-500" />
-                <span className="text-sm text-slate-700">Automatique</span>
+                <span className="text-sm text-slate-700">Planifié</span>
               </label>
             </div>
 
-            {formData.triggerType === 'AUTOMATIC' && (
+            {formData.triggerType === 'SCHEDULED' && (
               <div className="mt-4 p-4 bg-amber-50 border border-amber-200 rounded-xl space-y-4">
                 <div className="grid grid-cols-2 gap-4">
                   <div>
@@ -6580,6 +7174,19 @@ function ProceduresPage() {
   if (currentView === 'steps') {
     return (
       <div className="space-y-6">
+        {/* Toast Notification */}
+        {toast.show && (
+          <div className={`fixed top-4 right-4 z-[100] px-6 py-4 rounded-xl shadow-lg flex items-center gap-3 transition-all ${
+            toast.type === 'success' ? 'bg-green-600 text-white' : 'bg-red-600 text-white'
+          }`}>
+            {toast.type === 'success' ? <Check className="w-5 h-5" /> : <AlertTriangle className="w-5 h-5" />}
+            <span className="font-medium">{toast.message}</span>
+            <button onClick={() => setToast({ ...toast, show: false })} className="ml-2 hover:opacity-80">
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        )}
+
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-display font-bold text-slate-800">Étapes de la procédure</h1>
@@ -6630,14 +7237,22 @@ function ProceduresPage() {
                       <div>
                         <label className="block text-xs font-medium text-slate-500 mb-1">Responsables</label>
                         <div className="relative">
-                          <input type="text" value={showResponsibleDropdown === index ? responsibleSearch : ''}
-                            onChange={(e) => { setResponsibleSearch(e.target.value); setShowResponsibleDropdown(index) }}
-                            onFocus={() => setShowResponsibleDropdown(index)}
-                            placeholder="Ajouter un responsable..."
-                            className="w-full px-3 py-1.5 text-sm border border-slate-300 rounded-lg" />
+                          <div className="flex flex-wrap items-center gap-1 min-h-[34px] px-2 py-1 border border-slate-300 rounded-lg focus-within:ring-2 focus-within:ring-primary-500 bg-white">
+                            {step.responsibles?.map(id => (
+                              <span key={id} className="inline-flex items-center gap-1 px-2 py-0.5 bg-primary-100 text-primary-700 rounded text-xs">
+                                {getItemName(id)}
+                                <button type="button" onClick={() => removeResponsible(index, id)} className="hover:text-red-500"><X className="w-3 h-3" /></button>
+                              </span>
+                            ))}
+                            <input type="text" value={showResponsibleDropdown === index ? responsibleSearch : ''}
+                              onChange={(e) => { setResponsibleSearch(e.target.value); setShowResponsibleDropdown(index) }}
+                              onFocus={() => setShowResponsibleDropdown(index)}
+                              placeholder={step.responsibles?.length ? '' : 'Ajouter...'}
+                              className="flex-1 min-w-[80px] px-1 py-0.5 border-0 focus:ring-0 focus:outline-none text-sm" />
+                          </div>
                           {showResponsibleDropdown === index && responsibleSearch && (
                             <div className="absolute z-10 w-full mt-1 bg-white border border-slate-200 rounded-lg shadow-lg max-h-32 overflow-y-auto">
-                              {filteredUsersGroups.slice(0, 5).map(item => (
+                              {filteredUsersGroups.filter(ug => !step.responsibles?.includes(ug.id)).slice(0, 5).map(item => (
                                 <button key={item.id} onClick={() => addResponsible(index, item)}
                                   className="w-full px-3 py-1.5 text-left text-sm hover:bg-slate-50 flex items-center gap-2">
                                   {item.type === 'user' ? <User className="w-3 h-3" /> : <Users className="w-3 h-3" />}
@@ -6647,16 +7262,6 @@ function ProceduresPage() {
                             </div>
                           )}
                         </div>
-                        {step.responsibles && step.responsibles.length > 0 && (
-                          <div className="flex flex-wrap gap-1 mt-1">
-                            {step.responsibles.map(id => (
-                              <span key={id} className="inline-flex items-center gap-1 px-2 py-0.5 bg-slate-100 rounded text-xs">
-                                {getItemName(id)}
-                                <button onClick={() => removeResponsible(index, id)} className="hover:text-red-500"><X className="w-3 h-3" /></button>
-                              </span>
-                            ))}
-                          </div>
-                        )}
                       </div>
 
                       {/* Operations */}
@@ -6693,27 +7298,84 @@ function ProceduresPage() {
                 <h2 className="text-xl font-display font-bold text-slate-800">
                   Opérations - Étape {steps[editingStepIndex]?.stepNumber}
                 </h2>
-                <button onClick={() => setShowOperationsModal(false)} className="p-2 hover:bg-slate-100 rounded-lg">
+                <button onClick={() => closeOperationsModal()} className="p-2 hover:bg-slate-100 rounded-lg">
                   <X className="w-5 h-5 text-slate-500" />
                 </button>
               </div>
               <div className="flex-1 overflow-y-auto p-6">
-                {/* Add operation form */}
-                <div className="mb-6 p-4 bg-slate-50 rounded-xl space-y-3">
-                  <h3 className="font-medium text-slate-700">Nouvelle opération</h3>
+                {/* Add/Edit operation form */}
+                <div className={`mb-6 p-4 rounded-xl space-y-3 ${editingOperationIndex !== null ? 'bg-amber-50 border border-amber-200' : 'bg-slate-50'}`}>
+                  <div className="flex items-center justify-between">
+                    <h3 className="font-medium text-slate-700">
+                      {editingOperationIndex !== null ? 'Modifier l\'opération' : 'Nouvelle opération'}
+                    </h3>
+                    {editingOperationIndex !== null && (
+                      <button onClick={cancelEditOperation} className="text-xs text-slate-500 hover:text-slate-700">Annuler</button>
+                    )}
+                  </div>
                   <input type="text" value={operationForm.name} onChange={(e) => setOperationForm({ ...operationForm, name: e.target.value })}
                     placeholder="Nom de l'opération" className="w-full px-3 py-2 border border-slate-300 rounded-lg" />
                   <input type="text" value={operationForm.description} onChange={(e) => setOperationForm({ ...operationForm, description: e.target.value })}
                     placeholder="Description" className="w-full px-3 py-2 border border-slate-300 rounded-lg" />
-                  <div className="flex items-center gap-3">
-                    <select value={operationForm.formId} onChange={(e) => setOperationForm({ ...operationForm, formId: e.target.value })}
-                      className="flex-1 px-3 py-2 border border-slate-300 rounded-lg">
-                      <option value="">Aucun formulaire</option>
-                      {forms.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
-                    </select>
+                  {/* Form selector with search */}
+                  <div className="relative">
+                    <label className="block text-xs font-medium text-slate-500 mb-1">Formulaire associé</label>
+                    <div className="relative">
+                      <div className="flex items-center gap-2 px-3 py-2 border border-slate-300 rounded-lg bg-white focus-within:ring-2 focus-within:ring-primary-500">
+                        <FileText className="w-4 h-4 text-slate-400" />
+                        {operationForm.formId ? (
+                          <div className="flex-1 flex items-center justify-between">
+                            <span className="text-sm text-slate-700">{forms.find(f => f.id === operationForm.formId)?.name || 'Formulaire sélectionné'}</span>
+                            <button type="button" onClick={() => { setOperationForm({ ...operationForm, formId: '' }); setFormSearch('') }}
+                              className="p-0.5 hover:bg-slate-100 rounded">
+                              <X className="w-4 h-4 text-slate-400" />
+                            </button>
+                          </div>
+                        ) : (
+                          <input type="text" value={formSearch}
+                            onChange={(e) => { setFormSearch(e.target.value); setShowFormDropdown(true) }}
+                            onFocus={() => setShowFormDropdown(true)}
+                            placeholder="Rechercher un formulaire..."
+                            className="flex-1 border-0 focus:ring-0 focus:outline-none text-sm" />
+                        )}
+                      </div>
+                      {showFormDropdown && !operationForm.formId && (
+                        <div className="absolute z-20 w-full mt-1 bg-white border border-slate-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">
+                          <button type="button" onClick={() => { setOperationForm({ ...operationForm, formId: '' }); setShowFormDropdown(false); setFormSearch('') }}
+                            className="w-full px-3 py-2 text-left text-sm text-slate-500 hover:bg-slate-50 border-b border-slate-100">
+                            Aucun formulaire
+                          </button>
+                          {forms.filter(f =>
+                            formSearch === '' ||
+                            f.name.toLowerCase().includes(formSearch.toLowerCase()) ||
+                            (f.code && f.code.toLowerCase().includes(formSearch.toLowerCase()))
+                          ).length === 0 ? (
+                            <p className="px-3 py-2 text-sm text-slate-500">Aucun formulaire trouvé</p>
+                          ) : (
+                            forms.filter(f =>
+                              formSearch === '' ||
+                              f.name.toLowerCase().includes(formSearch.toLowerCase()) ||
+                              (f.code && f.code.toLowerCase().includes(formSearch.toLowerCase()))
+                            ).slice(0, 10).map(f => (
+                              <button key={f.id} type="button"
+                                onClick={() => { setOperationForm({ ...operationForm, formId: f.id }); setShowFormDropdown(false); setFormSearch('') }}
+                                className="w-full px-3 py-2 text-left hover:bg-slate-50 flex items-center gap-2">
+                                <FileText className="w-4 h-4 text-primary-500" />
+                                <div className="flex-1 min-w-0">
+                                  <p className="text-sm font-medium text-slate-700 truncate">{f.name}</p>
+                                  {f.code && <p className="text-xs text-slate-400">{f.code}</p>}
+                                </div>
+                              </button>
+                            ))
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                  <div className="flex justify-end">
                     <button onClick={addOperation} disabled={!operationForm.name}
-                      className="px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 disabled:opacity-50">
-                      Ajouter
+                      className={`px-4 py-2 text-white rounded-lg disabled:opacity-50 ${editingOperationIndex !== null ? 'bg-amber-600 hover:bg-amber-700' : 'bg-primary-600 hover:bg-primary-700'}`}>
+                      {editingOperationIndex !== null ? 'Modifier' : 'Ajouter'}
                     </button>
                   </div>
                 </div>
@@ -6724,7 +7386,7 @@ function ProceduresPage() {
                     <p className="text-center text-slate-500 py-4">Aucune opération</p>
                   ) : (
                     steps[editingStepIndex].operations?.map((op, opIndex) => (
-                      <div key={opIndex} className="flex items-center justify-between p-3 border border-slate-200 rounded-lg">
+                      <div key={opIndex} className={`flex items-center justify-between p-3 border rounded-lg ${editingOperationIndex === opIndex ? 'border-amber-400 bg-amber-50' : 'border-slate-200'}`}>
                         <div>
                           <p className="font-medium text-slate-800">{op.name}</p>
                           {op.description && <p className="text-xs text-slate-500">{op.description}</p>}
@@ -6734,19 +7396,135 @@ function ProceduresPage() {
                             </span>
                           )}
                         </div>
-                        <button onClick={() => removeOperation(editingStepIndex, opIndex)}
-                          className="p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded">
-                          <Trash2 className="w-4 h-4" />
-                        </button>
+                        <div className="flex items-center gap-1">
+                          <button onClick={() => editOperation(opIndex)}
+                            className="p-1.5 text-slate-400 hover:text-primary-600 hover:bg-primary-50 rounded">
+                            <Edit3 className="w-4 h-4" />
+                          </button>
+                          <button onClick={() => removeOperation(editingStepIndex, opIndex)}
+                            className="p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded">
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
                       </div>
                     ))
                   )}
                 </div>
               </div>
               <div className="p-4 border-t border-slate-200 flex justify-end">
-                <button onClick={() => setShowOperationsModal(false)} className="px-4 py-2 bg-primary-600 text-white rounded-xl hover:bg-primary-700">
+                <button onClick={() => closeOperationsModal()} className="px-4 py-2 bg-primary-600 text-white rounded-xl hover:bg-primary-700">
                   Terminé
                 </button>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    )
+  }
+
+  // TRASH VIEW
+  if (currentView === 'trash') {
+    return (
+      <div className="space-y-6">
+        {/* Toast Notification */}
+        {toast.show && (
+          <div className={`fixed top-4 right-4 z-[100] px-6 py-4 rounded-xl shadow-lg flex items-center gap-3 transition-all ${
+            toast.type === 'success' ? 'bg-green-600 text-white' : 'bg-red-600 text-white'
+          }`}>
+            {toast.type === 'success' ? <Check className="w-5 h-5" /> : <AlertTriangle className="w-5 h-5" />}
+            <span className="font-medium">{toast.message}</span>
+            <button onClick={() => setToast({ ...toast, show: false })} className="ml-2 hover:opacity-80">
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        )}
+
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <button onClick={handleBack} className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg">
+              <ArrowLeft className="w-5 h-5" />
+            </button>
+            <div>
+              <h1 className="text-2xl font-display font-bold text-slate-800 flex items-center gap-2">
+                <Archive className="w-6 h-6 text-slate-400" /> Corbeille
+              </h1>
+              <p className="text-slate-500 mt-1">{deletedProcedures.length} procédure(s) supprimée(s)</p>
+            </div>
+          </div>
+        </div>
+
+        {loadingTrash ? (
+          <div className="flex justify-center py-12"><RefreshCw className="w-8 h-8 text-primary-600 animate-spin" /></div>
+        ) : deletedProcedures.length === 0 ? (
+          <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-12 text-center">
+            <Archive className="w-16 h-16 text-slate-300 mx-auto mb-4" />
+            <h3 className="text-lg font-semibold text-slate-700 mb-2">La corbeille est vide</h3>
+            <p className="text-slate-500 mb-4">Les procédures supprimées apparaîtront ici</p>
+            <button onClick={handleBack} className="px-4 py-2 border border-slate-300 text-slate-700 rounded-xl hover:bg-slate-50">
+              Retour à la liste
+            </button>
+          </div>
+        ) : (
+          <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+            <div className="p-4 bg-amber-50 border-b border-amber-100">
+              <p className="text-sm text-amber-700 flex items-center gap-2">
+                <AlertTriangle className="w-4 h-4" />
+                Les procédures supprimées définitivement ne peuvent pas être récupérées
+              </p>
+            </div>
+            <table className="w-full">
+              <thead className="bg-slate-50 border-b border-slate-200">
+                <tr>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase">Procédure</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase">Type</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase">Étapes</th>
+                  <th className="px-4 py-3 text-right text-xs font-semibold text-slate-600 uppercase">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {deletedProcedures.map(proc => (
+                  <tr key={proc.id} className="hover:bg-slate-50">
+                    <td className="px-4 py-3">
+                      <p className="font-medium text-slate-800">{proc.name}</p>
+                      {proc.description && <p className="text-xs text-slate-500 truncate max-w-xs">{proc.description}</p>}
+                    </td>
+                    <td className="px-4 py-3">
+                      <span className="text-sm text-slate-600">{proc.type || 'Standard'}</span>
+                    </td>
+                    <td className="px-4 py-3">
+                      <span className="text-sm text-slate-600">{proc.stepsCount || proc.steps?.length || 0} étape(s)</span>
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="flex items-center justify-end gap-1">
+                        <button onClick={() => handleRestore(proc)} className="p-2 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg" title="Restaurer">
+                          <RefreshCw className="w-4 h-4" />
+                        </button>
+                        <button onClick={() => { setPermanentDeletingProcedure(proc); setShowPermanentDeleteModal(true) }} className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg" title="Supprimer définitivement">
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {/* Permanent Delete Modal */}
+        {showPermanentDeleteModal && permanentDeletingProcedure && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-6 text-center">
+              <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                <AlertTriangle className="w-8 h-8 text-red-600" />
+              </div>
+              <h3 className="text-lg font-semibold text-slate-800 mb-2">Supprimer définitivement</h3>
+              <p className="text-slate-500 mb-2">Êtes-vous sûr de vouloir supprimer définitivement la procédure "{permanentDeletingProcedure.name}" ?</p>
+              <p className="text-red-600 text-sm mb-6">Cette action supprimera également toutes les étapes et opérations associées.</p>
+              <div className="flex gap-3 justify-center">
+                <button onClick={() => setShowPermanentDeleteModal(false)} className="px-4 py-2 border border-slate-300 text-slate-700 rounded-xl hover:bg-slate-50">Annuler</button>
+                <button onClick={handlePermanentDelete} className="px-4 py-2 bg-red-600 text-white rounded-xl hover:bg-red-700">Supprimer définitivement</button>
               </div>
             </div>
           </div>
@@ -6776,13 +7554,14 @@ function EventCategoriesPage() {
   const { t } = useTranslation()
   const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 
+  // View state
+  const [currentView, setCurrentView] = useState<'list' | 'form'>('list')
   const [categories, setCategories] = useState<EventCategoryData[]>([])
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState('')
   const [showInactive, setShowInactive] = useState(false)
 
-  // Modal state
-  const [showModal, setShowModal] = useState(false)
+  // Edit state
   const [editingCategory, setEditingCategory] = useState<EventCategoryData | null>(null)
   const [showDeleteModal, setShowDeleteModal] = useState(false)
   const [deletingCategory, setDeletingCategory] = useState<EventCategoryData | null>(null)
@@ -6797,6 +7576,22 @@ function EventCategoriesPage() {
     isActive: true
   })
 
+  // Icon selector state
+  const [iconSearch, setIconSearch] = useState('')
+  const [showIconDropdown, setShowIconDropdown] = useState(false)
+  const iconDropdownRef = useRef<HTMLDivElement>(null)
+
+  // Close icon dropdown on outside click
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (iconDropdownRef.current && !iconDropdownRef.current.contains(event.target as Node)) {
+        setShowIconDropdown(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [])
+
   const getHeaders = () => {
     const authData = localStorage.getItem('auth_token')
     const token = authData ? JSON.parse(authData).token : null
@@ -6809,7 +7604,19 @@ function EventCategoriesPage() {
       const response = await fetch(`${API_URL}/api/config/event-categories`, { headers: getHeaders() })
       if (response.ok) {
         const data = await response.json()
-        setCategories(data.data || data || [])
+        const rawCategories = data.data || data || []
+        // Transform snake_case to camelCase
+        const transformed = rawCategories.map((cat: any) => ({
+          id: cat.id,
+          code: cat.code,
+          name: cat.name,
+          description: cat.description,
+          color: cat.color,
+          icon: cat.icon,
+          isActive: cat.is_active,
+          sortOrder: cat.sort_order
+        }))
+        setCategories(transformed)
       }
     } catch (error) {
       console.error('Error loading categories:', error)
@@ -6834,7 +7641,7 @@ function EventCategoriesPage() {
   const handleCreate = () => {
     setEditingCategory(null)
     setFormData({ code: '', name: '', description: '', color: '#10b981', icon: 'tag', isActive: true })
-    setShowModal(true)
+    setCurrentView('form')
   }
 
   const handleEdit = (cat: EventCategoryData) => {
@@ -6847,14 +7654,24 @@ function EventCategoriesPage() {
       icon: cat.icon || 'tag',
       isActive: cat.isActive
     })
-    setShowModal(true)
+    setCurrentView('form')
+  }
+
+  const handleBack = () => {
+    setCurrentView('list')
+    setEditingCategory(null)
   }
 
   const handleSave = async () => {
     if (!formData.code || !formData.name) return
     try {
       const payload = {
-        ...formData,
+        code: formData.code,
+        name: formData.name,
+        description: formData.description || null,
+        color: formData.color,
+        icon: formData.icon,
+        isActive: formData.isActive,
         sortOrder: editingCategory?.sortOrder || categories.length + 1
       }
       const url = editingCategory
@@ -6867,7 +7684,10 @@ function EventCategoriesPage() {
       })
       if (response.ok) {
         loadCategories()
-        setShowModal(false)
+        setCurrentView('list')
+      } else {
+        const errorData = await response.json()
+        console.error('Error saving:', errorData)
       }
     } catch (error) {
       console.error('Error saving category:', error)
@@ -6891,20 +7711,321 @@ function EventCategoriesPage() {
     }
   }
 
+  // Icon mapping with React components
+  const iconComponents: Record<string, React.ReactNode> = {
+    'alert-triangle': <AlertTriangle className="w-5 h-5" />,
+    'alert-circle': <AlertCircle className="w-5 h-5" />,
+    'bug': <Bug className="w-5 h-5" />,
+    'siren': <Siren className="w-5 h-5" />,
+    'biohazard': <Biohazard className="w-5 h-5" />,
+    'microscope': <Microscope className="w-5 h-5" />,
+    'flask': <FlaskConical className="w-5 h-5" />,
+    'test-tube': <TestTube2 className="w-5 h-5" />,
+    'shield': <Shield className="w-5 h-5" />,
+    'shield-alert': <ShieldAlert className="w-5 h-5" />,
+    'shield-check': <ShieldCheck className="w-5 h-5" />,
+    'syringe': <Syringe className="w-5 h-5" />,
+    'pill': <Pill className="w-5 h-5" />,
+    'thermometer': <Thermometer className="w-5 h-5" />,
+    'stethoscope': <Stethoscope className="w-5 h-5" />,
+    'heart': <Heart className="w-5 h-5" />,
+    'heart-pulse': <HeartPulse className="w-5 h-5" />,
+    'alert-siren': <Siren className="w-5 h-5" />,
+    'eye': <Eye className="w-5 h-5" />,
+    'activity': <Activity className="w-5 h-5" />,
+    'building': <Building2 className="w-5 h-5" />,
+    'warehouse': <Warehouse className="w-5 h-5" />,
+    'factory': <Factory className="w-5 h-5" />,
+    'home': <Home className="w-5 h-5" />,
+    'map-pin': <MapPin className="w-5 h-5" />,
+    'map-pinned': <MapPinned className="w-5 h-5" />,
+    'navigation': <Navigation className="w-5 h-5" />,
+    'route': <Route className="w-5 h-5" />,
+    'truck': <Truck className="w-5 h-5" />,
+    'car': <Car className="w-5 h-5" />,
+    'plane': <Plane className="w-5 h-5" />,
+    'ship': <Ship className="w-5 h-5" />,
+    'train': <Train className="w-5 h-5" />,
+    'bird': <Bird className="w-5 h-5" />,
+    'fish': <Fish className="w-5 h-5" />,
+    'dog': <Dog className="w-5 h-5" />,
+    'cat': <Cat className="w-5 h-5" />,
+    'rat': <Rat className="w-5 h-5" />,
+    'beef': <Beef className="w-5 h-5" />,
+    'egg': <Egg className="w-5 h-5" />,
+    'leaf': <Leaf className="w-5 h-5" />,
+    'tree': <TreePine className="w-5 h-5" />,
+    'wheat': <Wheat className="w-5 h-5" />,
+    'apple': <Apple className="w-5 h-5" />,
+    'carrot': <Carrot className="w-5 h-5" />,
+    'droplet': <Droplet className="w-5 h-5" />,
+    'flame': <Flame className="w-5 h-5" />,
+    'wind': <Wind className="w-5 h-5" />,
+    'megaphone': <Megaphone className="w-5 h-5" />,
+    'bell': <Bell className="w-5 h-5" />,
+    'radio': <RadioIcon className="w-5 h-5" />,
+    'file-text': <FileText className="w-5 h-5" />,
+    'file-warning': <FileWarning className="w-5 h-5" />,
+    'file-check': <FileCheck className="w-5 h-5" />,
+    'folder': <Folder className="w-5 h-5" />,
+    'folder-open': <FolderOpen className="w-5 h-5" />,
+    'clipboard': <ClipboardList className="w-5 h-5" />,
+    'archive': <Archive className="w-5 h-5" />,
+    'database': <Database className="w-5 h-5" />,
+    'users': <Users className="w-5 h-5" />,
+    'user': <User className="w-5 h-5" />,
+    'calendar': <Calendar className="w-5 h-5" />,
+    'clock': <Clock className="w-5 h-5" />,
+    'target': <Target className="w-5 h-5" />,
+    'crosshair': <Crosshair className="w-5 h-5" />,
+    'search': <Search className="w-5 h-5" />,
+    'scan': <ScanLine className="w-5 h-5" />,
+    'qr-code': <QrCode className="w-5 h-5" />,
+    'barcode': <Barcode className="w-5 h-5" />,
+    'tag': <Tag className="w-5 h-5" />,
+    'tags': <Tags className="w-5 h-5" />,
+    'bookmark': <Bookmark className="w-5 h-5" />,
+    'flag': <Flag className="w-5 h-5" />,
+    'award': <Award className="w-5 h-5" />,
+    'trophy': <Trophy className="w-5 h-5" />,
+    'star': <Star className="w-5 h-5" />,
+    'lightbulb': <Lightbulb className="w-5 h-5" />,
+    'zap': <Zap className="w-5 h-5" />,
+    'settings': <Settings className="w-5 h-5" />,
+    'help': <HelpCircle className="w-5 h-5" />,
+    'info': <Info className="w-5 h-5" />,
+    'globe': <Globe className="w-5 h-5" />,
+    'lock': <LockIcon className="w-5 h-5" />,
+    'unlock': <Unlock className="w-5 h-5" />,
+    'key': <Key className="w-5 h-5" />,
+    'fingerprint': <Fingerprint className="w-5 h-5" />
+  }
+
   const iconOptions = [
-    { value: 'alert-triangle', label: 'Alerte' },
-    { value: 'bug', label: 'Bug' },
-    { value: 'microscope', label: 'Laboratoire' },
-    { value: 'shield', label: 'Biosécurité' },
-    { value: 'syringe', label: 'Vaccination' },
-    { value: 'eye', label: 'Surveillance' },
-    { value: 'activity', label: 'Activité' },
-    { value: 'building', label: 'Administration' },
-    { value: 'tag', label: 'Autre' }
+    { value: 'alert-triangle', label: 'Alerte', category: 'Alertes' },
+    { value: 'alert-circle', label: 'Alerte cercle', category: 'Alertes' },
+    { value: 'bug', label: 'Bug/Insecte', category: 'Santé' },
+    { value: 'siren', label: 'Sirène', category: 'Alertes' },
+    { value: 'biohazard', label: 'Biohazard', category: 'Santé' },
+    { value: 'microscope', label: 'Microscope', category: 'Laboratoire' },
+    { value: 'flask', label: 'Flacon', category: 'Laboratoire' },
+    { value: 'test-tube', label: 'Tube à essai', category: 'Laboratoire' },
+    { value: 'shield', label: 'Bouclier', category: 'Sécurité' },
+    { value: 'shield-alert', label: 'Bouclier alerte', category: 'Sécurité' },
+    { value: 'shield-check', label: 'Bouclier validé', category: 'Sécurité' },
+    { value: 'syringe', label: 'Seringue', category: 'Médical' },
+    { value: 'pill', label: 'Pilule', category: 'Médical' },
+    { value: 'thermometer', label: 'Thermomètre', category: 'Médical' },
+    { value: 'stethoscope', label: 'Stéthoscope', category: 'Médical' },
+    { value: 'heart', label: 'Cœur', category: 'Médical' },
+    { value: 'heart-pulse', label: 'Battement cœur', category: 'Médical' },
+    { value: 'alert-siren', label: 'Alerte sirène', category: 'Alertes' },
+    { value: 'eye', label: 'Œil/Surveillance', category: 'Surveillance' },
+    { value: 'activity', label: 'Activité', category: 'Surveillance' },
+    { value: 'target', label: 'Cible', category: 'Surveillance' },
+    { value: 'crosshair', label: 'Viseur', category: 'Surveillance' },
+    { value: 'search', label: 'Recherche', category: 'Surveillance' },
+    { value: 'scan', label: 'Scanner', category: 'Surveillance' },
+    { value: 'building', label: 'Bâtiment', category: 'Lieux' },
+    { value: 'warehouse', label: 'Entrepôt', category: 'Lieux' },
+    { value: 'factory', label: 'Usine', category: 'Lieux' },
+    { value: 'home', label: 'Maison', category: 'Lieux' },
+    { value: 'map-pin', label: 'Marqueur carte', category: 'Lieux' },
+    { value: 'map-pinned', label: 'Lieu épinglé', category: 'Lieux' },
+    { value: 'navigation', label: 'Navigation', category: 'Transport' },
+    { value: 'route', label: 'Itinéraire', category: 'Transport' },
+    { value: 'truck', label: 'Camion', category: 'Transport' },
+    { value: 'car', label: 'Voiture', category: 'Transport' },
+    { value: 'plane', label: 'Avion', category: 'Transport' },
+    { value: 'ship', label: 'Bateau', category: 'Transport' },
+    { value: 'train', label: 'Train', category: 'Transport' },
+    { value: 'bird', label: 'Oiseau', category: 'Animaux' },
+    { value: 'fish', label: 'Poisson', category: 'Animaux' },
+    { value: 'dog', label: 'Chien', category: 'Animaux' },
+    { value: 'cat', label: 'Chat', category: 'Animaux' },
+    { value: 'rat', label: 'Rat/Rongeur', category: 'Animaux' },
+    { value: 'beef', label: 'Bétail', category: 'Animaux' },
+    { value: 'egg', label: 'Œuf/Volaille', category: 'Animaux' },
+    { value: 'leaf', label: 'Feuille', category: 'Environnement' },
+    { value: 'tree', label: 'Arbre', category: 'Environnement' },
+    { value: 'wheat', label: 'Blé/Céréales', category: 'Environnement' },
+    { value: 'apple', label: 'Pomme/Fruit', category: 'Environnement' },
+    { value: 'carrot', label: 'Carotte/Légume', category: 'Environnement' },
+    { value: 'droplet', label: 'Eau/Goutte', category: 'Environnement' },
+    { value: 'flame', label: 'Feu/Flamme', category: 'Environnement' },
+    { value: 'wind', label: 'Vent/Air', category: 'Environnement' },
+    { value: 'megaphone', label: 'Mégaphone', category: 'Communication' },
+    { value: 'bell', label: 'Cloche', category: 'Communication' },
+    { value: 'radio', label: 'Radio', category: 'Communication' },
+    { value: 'file-text', label: 'Document', category: 'Documents' },
+    { value: 'file-warning', label: 'Document alerte', category: 'Documents' },
+    { value: 'file-check', label: 'Document validé', category: 'Documents' },
+    { value: 'folder', label: 'Dossier', category: 'Documents' },
+    { value: 'folder-open', label: 'Dossier ouvert', category: 'Documents' },
+    { value: 'clipboard', label: 'Presse-papiers', category: 'Documents' },
+    { value: 'archive', label: 'Archive', category: 'Documents' },
+    { value: 'database', label: 'Base de données', category: 'Documents' },
+    { value: 'users', label: 'Utilisateurs', category: 'Personnes' },
+    { value: 'user', label: 'Utilisateur', category: 'Personnes' },
+    { value: 'calendar', label: 'Calendrier', category: 'Temps' },
+    { value: 'clock', label: 'Horloge', category: 'Temps' },
+    { value: 'tag', label: 'Étiquette', category: 'Divers' },
+    { value: 'tags', label: 'Étiquettes', category: 'Divers' },
+    { value: 'bookmark', label: 'Signet', category: 'Divers' },
+    { value: 'flag', label: 'Drapeau', category: 'Divers' },
+    { value: 'award', label: 'Récompense', category: 'Divers' },
+    { value: 'trophy', label: 'Trophée', category: 'Divers' },
+    { value: 'star', label: 'Étoile', category: 'Divers' },
+    { value: 'lightbulb', label: 'Ampoule/Idée', category: 'Divers' },
+    { value: 'zap', label: 'Éclair', category: 'Divers' },
+    { value: 'settings', label: 'Paramètres', category: 'Divers' },
+    { value: 'help', label: 'Aide', category: 'Divers' },
+    { value: 'info', label: 'Information', category: 'Divers' },
+    { value: 'globe', label: 'Globe', category: 'Divers' },
+    { value: 'lock', label: 'Cadenas', category: 'Sécurité' },
+    { value: 'unlock', label: 'Déverrouillé', category: 'Sécurité' },
+    { value: 'key', label: 'Clé', category: 'Sécurité' },
+    { value: 'fingerprint', label: 'Empreinte', category: 'Sécurité' }
   ]
 
-  const colorOptions = ['#10b981', '#3b82f6', '#8b5cf6', '#f59e0b', '#ef4444', '#ec4899', '#06b6d4', '#84cc16']
+  const filteredIcons = iconOptions.filter(icon =>
+    icon.label.toLowerCase().includes(iconSearch.toLowerCase()) ||
+    icon.category.toLowerCase().includes(iconSearch.toLowerCase())
+  )
 
+  const getIconComponent = (iconName: string) => iconComponents[iconName] || <Tag className="w-5 h-5" />
+
+
+  // FORM VIEW
+  if (currentView === 'form') {
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <h1 className="text-2xl font-display font-bold text-slate-800">
+            {editingCategory ? 'Modifier la catégorie' : 'Nouvelle catégorie'}
+          </h1>
+          <button onClick={handleBack} className="px-4 py-2 border border-slate-300 text-slate-700 rounded-xl hover:bg-slate-50 flex items-center gap-2">
+            <ArrowLeft className="w-4 h-4" /> Retour
+          </button>
+        </div>
+
+        <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 space-y-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">Code *</label>
+              <input type="text" value={formData.code}
+                onChange={(e) => setFormData({ ...formData, code: e.target.value.toUpperCase() })}
+                placeholder="OUTBREAK"
+                className="w-full px-4 py-2 border border-slate-300 rounded-xl focus:ring-2 focus:ring-primary-500" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">Nom *</label>
+              <input type="text" value={formData.name}
+                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                placeholder="Foyer épidémique"
+                className="w-full px-4 py-2 border border-slate-300 rounded-xl focus:ring-2 focus:ring-primary-500" />
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">Description</label>
+            <textarea value={formData.description}
+              onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+              rows={2} placeholder="Description de la catégorie..."
+              className="w-full px-4 py-2 border border-slate-300 rounded-xl focus:ring-2 focus:ring-primary-500" />
+          </div>
+
+          {/* Couleur et Icône sur la même ligne */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {/* Couleur */}
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">Couleur</label>
+              <div className="flex items-center gap-3">
+                <input type="color" value={formData.color}
+                  onChange={(e) => setFormData({ ...formData, color: e.target.value })}
+                  className="w-12 h-10 rounded-lg border border-slate-300 cursor-pointer" />
+                <input type="text" value={formData.color}
+                  onChange={(e) => setFormData({ ...formData, color: e.target.value })}
+                  placeholder="#10b981"
+                  className="flex-1 px-4 py-2 border border-slate-300 rounded-xl focus:ring-2 focus:ring-primary-500 font-mono text-sm" />
+              </div>
+            </div>
+
+            {/* Icône avec recherche */}
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">Icône</label>
+            <div className="relative" ref={iconDropdownRef}>
+              <button type="button" onClick={() => setShowIconDropdown(!showIconDropdown)}
+                className="w-full px-4 py-2 border border-slate-300 rounded-xl focus:ring-2 focus:ring-primary-500 bg-white flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <span className="text-slate-600">{getIconComponent(formData.icon)}</span>
+                  <span className="text-slate-700">{iconOptions.find(i => i.value === formData.icon)?.label || 'Sélectionner'}</span>
+                </div>
+                <ChevronDown className={`w-4 h-4 text-slate-400 transition-transform ${showIconDropdown ? 'rotate-180' : ''}`} />
+              </button>
+
+              {showIconDropdown && (
+                <div className="absolute z-20 w-full mt-1 bg-white border border-slate-200 rounded-xl shadow-lg">
+                  <div className="p-2 border-b border-slate-100">
+                    <div className="relative">
+                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                      <input type="text" value={iconSearch} onChange={(e) => setIconSearch(e.target.value)}
+                        placeholder="Rechercher une icône..."
+                        className="w-full pl-9 pr-4 py-2 text-sm border border-slate-200 rounded-lg focus:ring-2 focus:ring-primary-500" />
+                    </div>
+                  </div>
+                  <div className="max-h-64 overflow-y-auto p-2">
+                    {filteredIcons.length === 0 ? (
+                      <p className="px-3 py-2 text-sm text-slate-500 text-center">Aucune icône trouvée</p>
+                    ) : (
+                      <div className="grid grid-cols-2 gap-1">
+                        {filteredIcons.map(icon => (
+                          <button key={icon.value} type="button"
+                            onClick={() => { setFormData({ ...formData, icon: icon.value }); setShowIconDropdown(false); setIconSearch('') }}
+                            className={`flex items-center gap-2 px-3 py-2 rounded-lg text-left transition-colors ${
+                              formData.icon === icon.value ? 'bg-primary-100 text-primary-700' : 'hover:bg-slate-50 text-slate-700'
+                            }`}>
+                            <span className={formData.icon === icon.value ? 'text-primary-600' : 'text-slate-500'}>
+                              {getIconComponent(icon.value)}
+                            </span>
+                            <span className="text-sm truncate">{icon.label}</span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+          </div>
+
+          <div className="flex items-center justify-between p-4 bg-slate-50 rounded-xl">
+            <div>
+              <p className="font-medium text-slate-800">Catégorie active</p>
+              <p className="text-sm text-slate-500">Les catégories inactives ne sont pas disponibles</p>
+            </div>
+            <button type="button" onClick={() => setFormData({ ...formData, isActive: !formData.isActive })}
+              className={`w-12 h-6 rounded-full transition-colors ${formData.isActive ? 'bg-primary-600' : 'bg-slate-300'}`}>
+              <div className={`w-5 h-5 bg-white rounded-full shadow transition-transform ${formData.isActive ? 'translate-x-6' : 'translate-x-0.5'}`} />
+            </button>
+          </div>
+
+          {/* Actions */}
+          <div className="flex justify-end gap-3 pt-4 border-t border-slate-200">
+            <button onClick={handleBack} className="px-4 py-2 border border-slate-300 text-slate-700 rounded-xl hover:bg-slate-50">
+              Annuler
+            </button>
+            <button onClick={handleSave} className="px-4 py-2 bg-primary-600 text-white rounded-xl hover:bg-primary-700 flex items-center gap-2">
+              <Save className="w-4 h-4" /> {editingCategory ? 'Enregistrer' : 'Créer'}
+            </button>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  // LIST VIEW
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -6961,7 +8082,7 @@ function EventCategoriesPage() {
                 <div className="flex items-start justify-between mb-3">
                   <div className="flex items-center gap-3">
                     <div className="p-2.5 rounded-xl" style={{ backgroundColor: `${cat.color}20`, color: cat.color }}>
-                      <AlertTriangle className="w-5 h-5" />
+                      {getIconComponent(cat.icon)}
                     </div>
                     <div>
                       <h3 className="font-semibold text-slate-800">{cat.name}</h3>
@@ -6995,100 +8116,6 @@ function EventCategoriesPage() {
         </div>
       )}
 
-      {/* Create/Edit Modal */}
-      {showModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg">
-            <div className="p-6 border-b border-slate-200">
-              <h2 className="text-xl font-semibold text-slate-800">
-                {editingCategory ? 'Modifier la catégorie' : 'Nouvelle catégorie'}
-              </h2>
-            </div>
-            <div className="p-6 space-y-4">
-              {/* Preview */}
-              <div className="p-4 bg-slate-50 rounded-xl">
-                <p className="text-xs text-slate-500 mb-2">Aperçu</p>
-                <div className="flex items-center gap-3">
-                  <div className="p-2.5 rounded-xl" style={{ backgroundColor: `${formData.color}20`, color: formData.color }}>
-                    <AlertTriangle className="w-5 h-5" />
-                  </div>
-                  <div>
-                    <h4 className="font-semibold text-slate-800">{formData.name || 'Nom de la catégorie'}</h4>
-                    <p className="text-xs text-slate-500 font-mono">{formData.code || 'CODE'}</p>
-                  </div>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">Code *</label>
-                  <input type="text" value={formData.code}
-                    onChange={(e) => setFormData({ ...formData, code: e.target.value.toUpperCase() })}
-                    placeholder="OUTBREAK"
-                    className="w-full px-4 py-2 border border-slate-300 rounded-xl focus:ring-2 focus:ring-primary-500" />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">Nom *</label>
-                  <input type="text" value={formData.name}
-                    onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                    placeholder="Foyer épidémique"
-                    className="w-full px-4 py-2 border border-slate-300 rounded-xl focus:ring-2 focus:ring-primary-500" />
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Description</label>
-                <textarea value={formData.description}
-                  onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                  rows={2} placeholder="Description de la catégorie..."
-                  className="w-full px-4 py-2 border border-slate-300 rounded-xl focus:ring-2 focus:ring-primary-500" />
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">Couleur</label>
-                  <div className="flex flex-wrap gap-2">
-                    {colorOptions.map(color => (
-                      <button key={color} type="button" onClick={() => setFormData({ ...formData, color })}
-                        className={`w-8 h-8 rounded-lg transition-all ${formData.color === color ? 'ring-2 ring-offset-2 ring-primary-500 scale-110' : 'hover:scale-105'}`}
-                        style={{ backgroundColor: color }} />
-                    ))}
-                  </div>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">Icône</label>
-                  <select value={formData.icon} onChange={(e) => setFormData({ ...formData, icon: e.target.value })}
-                    className="w-full px-4 py-2 border border-slate-300 rounded-xl focus:ring-2 focus:ring-primary-500">
-                    {iconOptions.map(opt => (
-                      <option key={opt.value} value={opt.value}>{opt.label}</option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-
-              <div className="flex items-center justify-between p-4 bg-slate-50 rounded-xl">
-                <div>
-                  <p className="font-medium text-slate-800">Catégorie active</p>
-                  <p className="text-sm text-slate-500">Les catégories inactives ne sont pas disponibles</p>
-                </div>
-                <button type="button" onClick={() => setFormData({ ...formData, isActive: !formData.isActive })}
-                  className={`w-12 h-6 rounded-full transition-colors ${formData.isActive ? 'bg-primary-600' : 'bg-slate-300'}`}>
-                  <div className={`w-5 h-5 bg-white rounded-full shadow transition-transform ${formData.isActive ? 'translate-x-6' : 'translate-x-0.5'}`} />
-                </button>
-              </div>
-            </div>
-            <div className="p-6 border-t border-slate-200 flex justify-end gap-3">
-              <button onClick={() => setShowModal(false)} className="px-4 py-2 border border-slate-300 text-slate-700 rounded-xl hover:bg-slate-50">
-                Annuler
-              </button>
-              <button onClick={handleSave} className="px-4 py-2 bg-primary-600 text-white rounded-xl hover:bg-primary-700">
-                {editingCategory ? 'Enregistrer' : 'Créer'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* Delete Modal */}
       {showDeleteModal && deletingCategory && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
@@ -7114,6 +8141,1705 @@ function EventCategoriesPage() {
 }
 
 /* ============================================
+   DOCUMENT TYPES PAGE
+   ============================================ */
+interface DocumentTypeData {
+  id: string
+  code: string
+  name: string
+  description?: string
+  isActive: boolean
+  sortOrder: number
+}
+
+function DocumentTypesPage() {
+  const { t } = useTranslation()
+  const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
+
+  // View state
+  const [currentView, setCurrentView] = useState<'list' | 'form'>('list')
+  const [documentTypes, setDocumentTypes] = useState<DocumentTypeData[]>([])
+  const [loading, setLoading] = useState(true)
+  const [searchTerm, setSearchTerm] = useState('')
+  const [showInactive, setShowInactive] = useState(false)
+
+  // Pagination state
+  const [currentPageNum, setCurrentPageNum] = useState(1)
+  const [itemsPerPage, setItemsPerPage] = useState(5)
+
+  // Edit state
+  const [editingDocType, setEditingDocType] = useState<DocumentTypeData | null>(null)
+  const [showDeleteModal, setShowDeleteModal] = useState(false)
+  const [deletingDocType, setDeletingDocType] = useState<DocumentTypeData | null>(null)
+
+  // Form state
+  const [formData, setFormData] = useState({
+    name: '',
+    description: '',
+    isActive: true
+  })
+
+  const getHeaders = () => {
+    const authData = localStorage.getItem('auth_token')
+    const token = authData ? JSON.parse(authData).token : null
+    return { 'Content-Type': 'application/json', ...(token && { 'Authorization': `Bearer ${token}` }) }
+  }
+
+  const loadDocumentTypes = async () => {
+    try {
+      setLoading(true)
+      const response = await fetch(`${API_URL}/api/config/document-types`, { headers: getHeaders() })
+      if (response.ok) {
+        const data = await response.json()
+        const rawTypes = data.data || data || []
+        const transformed = rawTypes.map((dt: any) => ({
+          id: dt.id,
+          code: dt.code,
+          name: dt.name,
+          description: dt.description,
+          isActive: dt.is_active ?? dt.isActive ?? true,
+          sortOrder: dt.sort_order ?? dt.sortOrder ?? 0
+        }))
+        setDocumentTypes(transformed)
+      }
+    } catch (error) {
+      console.error('Error loading document types:', error)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    loadDocumentTypes()
+  }, [])
+
+  const filteredDocTypes = documentTypes.filter(dt => {
+    if (!showInactive && !dt.isActive) return false
+    if (searchTerm) {
+      const search = searchTerm.toLowerCase()
+      return dt.name.toLowerCase().includes(search) || dt.code.toLowerCase().includes(search)
+    }
+    return true
+  })
+
+  // Pagination logic
+  const totalItems = filteredDocTypes.length
+  const totalPages = Math.ceil(totalItems / itemsPerPage)
+  const startIndex = (currentPageNum - 1) * itemsPerPage
+  const endIndex = startIndex + itemsPerPage
+  const paginatedDocTypes = filteredDocTypes.slice(startIndex, endIndex)
+
+  // Reset page when search changes
+  useEffect(() => {
+    setCurrentPageNum(1)
+  }, [searchTerm, showInactive])
+
+  const handleCreate = () => {
+    setEditingDocType(null)
+    setFormData({ name: '', description: '', isActive: true })
+    setCurrentView('form')
+  }
+
+  const handleEdit = (dt: DocumentTypeData) => {
+    setEditingDocType(dt)
+    setFormData({
+      name: dt.name,
+      description: dt.description || '',
+      isActive: dt.isActive
+    })
+    setCurrentView('form')
+  }
+
+  const handleBack = () => {
+    setCurrentView('list')
+    setEditingDocType(null)
+  }
+
+  const handleSave = async () => {
+    if (!formData.name) return
+    try {
+      // Auto-generate code from name
+      const generatedCode = editingDocType?.code || formData.name
+        .toUpperCase()
+        .normalize('NFD').replace(/[\u0300-\u036f]/g, '') // Remove accents
+        .replace(/[^A-Z0-9]+/g, '_')
+        .replace(/^_|_$/g, '')
+      const payload = {
+        code: generatedCode,
+        name: formData.name,
+        description: formData.description || null,
+        isActive: formData.isActive,
+        sortOrder: editingDocType?.sortOrder || documentTypes.length + 1
+      }
+      const url = editingDocType
+        ? `${API_URL}/api/config/document-types/${editingDocType.id}`
+        : `${API_URL}/api/config/document-types`
+      const response = await fetch(url, {
+        method: editingDocType ? 'PUT' : 'POST',
+        headers: getHeaders(),
+        body: JSON.stringify(payload)
+      })
+      if (response.ok) {
+        loadDocumentTypes()
+        setCurrentView('list')
+      } else {
+        const errorData = await response.json()
+        console.error('Error saving:', errorData)
+      }
+    } catch (error) {
+      console.error('Error saving document type:', error)
+    }
+  }
+
+  const handleDelete = async () => {
+    if (!deletingDocType) return
+    try {
+      const response = await fetch(`${API_URL}/api/config/document-types/${deletingDocType.id}`, {
+        method: 'DELETE',
+        headers: getHeaders()
+      })
+      if (response.ok) {
+        loadDocumentTypes()
+        setShowDeleteModal(false)
+        setDeletingDocType(null)
+      }
+    } catch (error) {
+      console.error('Error deleting document type:', error)
+    }
+  }
+
+  // FORM VIEW
+  if (currentView === 'form') {
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <h1 className="text-2xl font-display font-bold text-slate-800">
+            {editingDocType ? 'Modifier le type de document' : 'Nouveau type de document'}
+          </h1>
+          <button onClick={handleBack} className="px-4 py-2 border border-slate-300 text-slate-700 rounded-xl hover:bg-slate-50 flex items-center gap-2">
+            <ArrowLeft className="w-4 h-4" /> Retour
+          </button>
+        </div>
+
+        <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 space-y-6">
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">Nom *</label>
+            <input type="text" value={formData.name}
+              onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+              placeholder="Certificat sanitaire"
+              className="w-full px-4 py-2 border border-slate-300 rounded-xl focus:ring-2 focus:ring-primary-500" />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">Description</label>
+            <textarea value={formData.description}
+              onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+              rows={2} placeholder="Description du type de document..."
+              className="w-full px-4 py-2 border border-slate-300 rounded-xl focus:ring-2 focus:ring-primary-500" />
+          </div>
+
+          <div className="flex items-center justify-between p-4 bg-slate-50 rounded-xl">
+            <div>
+              <p className="font-medium text-slate-800">Type actif</p>
+              <p className="text-sm text-slate-500">Les types inactifs ne sont pas disponibles à la sélection</p>
+            </div>
+            <button type="button" onClick={() => setFormData({ ...formData, isActive: !formData.isActive })}
+              className={`w-12 h-6 rounded-full transition-colors ${formData.isActive ? 'bg-primary-600' : 'bg-slate-300'}`}>
+              <div className={`w-5 h-5 bg-white rounded-full shadow transition-transform ${formData.isActive ? 'translate-x-6' : 'translate-x-0.5'}`} />
+            </button>
+          </div>
+
+          {/* Actions */}
+          <div className="flex justify-end gap-3 pt-4 border-t border-slate-200">
+            <button onClick={handleBack} className="px-4 py-2 border border-slate-300 text-slate-700 rounded-xl hover:bg-slate-50">
+              Annuler
+            </button>
+            <button onClick={handleSave} className="px-4 py-2 bg-primary-600 text-white rounded-xl hover:bg-primary-700 flex items-center gap-2">
+              <Save className="w-4 h-4" /> {editingDocType ? 'Enregistrer' : 'Créer'}
+            </button>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  // LIST VIEW
+  return (
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-display font-bold text-slate-800">Types de documents</h1>
+          <p className="text-slate-500">Gérez les types de documents requis</p>
+        </div>
+        <button onClick={handleCreate} className="px-4 py-2 bg-primary-600 text-white rounded-xl hover:bg-primary-700 flex items-center gap-2">
+          <Plus className="w-4 h-4" /> Nouveau type
+        </button>
+      </div>
+
+      {/* Filters */}
+      <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-4">
+        <div className="flex flex-col sm:flex-row gap-4">
+          <div className="flex-1 relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+            <input type="text" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)}
+              placeholder="Rechercher un type de document..."
+              className="w-full pl-10 pr-4 py-2 border border-slate-300 rounded-xl focus:ring-2 focus:ring-primary-500" />
+          </div>
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input type="checkbox" checked={showInactive} onChange={(e) => setShowInactive(e.target.checked)}
+              className="rounded text-primary-600 focus:ring-primary-500" />
+            <span className="text-sm text-slate-600">Afficher inactifs</span>
+          </label>
+        </div>
+      </div>
+
+      {/* Document Types List */}
+      {loading ? (
+        <div className="space-y-3">
+          {[1, 2, 3, 4, 5].map(i => (
+            <div key={i} className="h-20 bg-slate-100 rounded-2xl animate-pulse" />
+          ))}
+        </div>
+      ) : filteredDocTypes.length === 0 ? (
+        <div className="text-center py-12">
+          <div className="w-16 h-16 bg-slate-100 rounded-2xl flex items-center justify-center mx-auto mb-4">
+            <FileText className="w-8 h-8 text-slate-400" />
+          </div>
+          <p className="text-slate-500 mb-4">Aucun type de document trouvé</p>
+          <button onClick={handleCreate} className="px-4 py-2 bg-primary-600 text-white rounded-xl hover:bg-primary-700">
+            Créer un type de document
+          </button>
+        </div>
+      ) : (
+        <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+          <table className="w-full">
+            <thead className="bg-slate-50 border-b border-slate-200">
+              <tr>
+                <th className="text-left px-6 py-3 text-xs font-medium text-slate-500 uppercase">Nom</th>
+                <th className="text-center px-6 py-3 text-xs font-medium text-slate-500 uppercase">Statut</th>
+                <th className="text-right px-6 py-3 text-xs font-medium text-slate-500 uppercase">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {paginatedDocTypes.map(dt => (
+                <tr key={dt.id} className={`hover:bg-slate-50 ${!dt.isActive ? 'opacity-60' : ''}`}>
+                  <td className="px-6 py-4">
+                    <div>
+                      <p className="font-medium text-slate-800">{dt.name}</p>
+                      {dt.description && <p className="text-sm text-slate-500 truncate max-w-md">{dt.description}</p>}
+                    </div>
+                  </td>
+                  <td className="px-6 py-4 text-center">
+                    <span className={`px-2 py-1 text-xs rounded-full ${dt.isActive ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-500'}`}>
+                      {dt.isActive ? 'Actif' : 'Inactif'}
+                    </span>
+                  </td>
+                  <td className="px-6 py-4 text-right">
+                    <div className="flex items-center justify-end gap-1">
+                      <button onClick={() => handleEdit(dt)} className="p-2 text-slate-400 hover:text-primary-600 hover:bg-primary-50 rounded-lg">
+                        <Edit3 className="w-4 h-4" />
+                      </button>
+                      <button onClick={() => { setDeletingDocType(dt); setShowDeleteModal(true) }} className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg">
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* Modern Pagination */}
+      {totalItems > 0 && (
+        <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-4">
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+            {/* Info & Items per page */}
+            <div className="flex items-center gap-4">
+              <div className="text-sm text-slate-500">
+                Affichage de <span className="font-semibold text-slate-700">{startIndex + 1}</span> à{' '}
+                <span className="font-semibold text-slate-700">{Math.min(endIndex, totalItems)}</span> sur{' '}
+                <span className="font-semibold text-slate-700">{totalItems}</span> types de documents
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-slate-500">Afficher</span>
+                <select
+                  value={itemsPerPage}
+                  onChange={(e) => { setItemsPerPage(Number(e.target.value)); setCurrentPageNum(1); }}
+                  className="px-2 py-1 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                >
+                  <option value={5}>5</option>
+                  <option value={10}>10</option>
+                  <option value={25}>25</option>
+                  <option value={50}>50</option>
+                </select>
+                <span className="text-sm text-slate-500">par page</span>
+              </div>
+            </div>
+
+            {/* Pagination Controls */}
+            {totalPages > 1 && (
+            <div className="flex items-center gap-1">
+              {/* First Page */}
+              <button
+                onClick={() => setCurrentPageNum(1)}
+                disabled={currentPageNum === 1}
+                className="flex items-center p-2 rounded-lg text-slate-500 hover:text-primary-600 hover:bg-primary-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                title="Première page"
+              >
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M11 19l-7-7 7-7m8 14l-7-7 7-7" />
+                </svg>
+              </button>
+
+              {/* Previous Page */}
+              <button
+                onClick={() => setCurrentPageNum(p => Math.max(1, p - 1))}
+                disabled={currentPageNum === 1}
+                className="p-2 rounded-lg text-slate-500 hover:text-primary-600 hover:bg-primary-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                title="Page précédente"
+              >
+                <ChevronLeft className="w-4 h-4" />
+              </button>
+
+              {/* Page Numbers */}
+              <div className="flex items-center gap-1 mx-2">
+                {Array.from({ length: totalPages }, (_, i) => i + 1)
+                  .filter(page => {
+                    if (totalPages <= 7) return true
+                    if (page === 1 || page === totalPages) return true
+                    if (Math.abs(page - currentPageNum) <= 1) return true
+                    return false
+                  })
+                  .map((page, idx, arr) => {
+                    const showEllipsis = idx > 0 && page - arr[idx - 1] > 1
+                    return (
+                      <div key={page} className="flex items-center">
+                        {showEllipsis && (
+                          <span className="px-2 text-slate-400">...</span>
+                        )}
+                        <button
+                          onClick={() => setCurrentPageNum(page)}
+                          className={`min-w-[36px] h-9 px-3 rounded-lg text-sm font-medium transition-all ${
+                            currentPageNum === page
+                              ? 'bg-gradient-to-r from-primary-500 to-primary-600 text-white shadow-md'
+                              : 'text-slate-600 hover:bg-slate-100'
+                          }`}
+                        >
+                          {page}
+                        </button>
+                      </div>
+                    )
+                  })}
+              </div>
+
+              {/* Next Page */}
+              <button
+                onClick={() => setCurrentPageNum(p => Math.min(totalPages, p + 1))}
+                disabled={currentPageNum === totalPages}
+                className="p-2 rounded-lg text-slate-500 hover:text-primary-600 hover:bg-primary-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                title="Page suivante"
+              >
+                <ChevronRight className="w-4 h-4" />
+              </button>
+
+              {/* Last Page */}
+              <button
+                onClick={() => setCurrentPageNum(totalPages)}
+                disabled={currentPageNum === totalPages}
+                className="flex items-center p-2 rounded-lg text-slate-500 hover:text-primary-600 hover:bg-primary-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                title="Dernière page"
+              >
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M13 5l7 7-7 7M5 5l7 7-7 7" />
+                </svg>
+              </button>
+            </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Delete Modal */}
+      {showDeleteModal && deletingDocType && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-6 text-center">
+            <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
+              <AlertTriangle className="w-8 h-8 text-red-600" />
+            </div>
+            <h3 className="text-lg font-semibold text-slate-800 mb-2">Supprimer le type de document</h3>
+            <p className="text-slate-500 mb-6">Supprimer "{deletingDocType.name}" ? Cette action est irréversible.</p>
+            <div className="flex gap-3 justify-center">
+              <button onClick={() => setShowDeleteModal(false)} className="px-4 py-2 border border-slate-300 text-slate-700 rounded-xl hover:bg-slate-50">
+                Annuler
+              </button>
+              <button onClick={handleDelete} className="px-4 py-2 bg-red-600 text-white rounded-xl hover:bg-red-700">
+                Supprimer
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+/* ============================================
+   EVENT PROVENANCES PAGE (Origins)
+   ============================================ */
+interface EventProvenanceData {
+  id: string
+  code: string
+  name: string
+  description?: string
+  color: string
+  icon: string
+  isActive: boolean
+  sortOrder: number
+}
+
+function EventProvenancesPage() {
+  const { t } = useTranslation()
+  const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
+
+  // View state
+  const [currentView, setCurrentView] = useState<'list' | 'form'>('list')
+  const [provenances, setProvenances] = useState<EventProvenanceData[]>([])
+  const [loading, setLoading] = useState(true)
+  const [searchTerm, setSearchTerm] = useState('')
+  const [showInactive, setShowInactive] = useState(false)
+
+  // Pagination state
+  const [currentPageNum, setCurrentPageNum] = useState(1)
+  const [itemsPerPage, setItemsPerPage] = useState(6)
+
+  // Edit state
+  const [editingProvenance, setEditingProvenance] = useState<EventProvenanceData | null>(null)
+  const [showDeleteModal, setShowDeleteModal] = useState(false)
+  const [deletingProvenance, setDeletingProvenance] = useState<EventProvenanceData | null>(null)
+
+  // Form state
+  const [formData, setFormData] = useState({
+    name: '',
+    description: '',
+    color: '#6366f1',
+    icon: 'map-pin',
+    isActive: true
+  })
+
+  // Icon selector state
+  const [iconSearch, setIconSearch] = useState('')
+  const [showIconDropdown, setShowIconDropdown] = useState(false)
+  const iconDropdownRef = useRef<HTMLDivElement>(null)
+
+  // Close icon dropdown on outside click
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (iconDropdownRef.current && !iconDropdownRef.current.contains(event.target as Node)) {
+        setShowIconDropdown(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [])
+
+  const getHeaders = () => {
+    const authData = localStorage.getItem('auth_token')
+    const token = authData ? JSON.parse(authData).token : null
+    return { 'Content-Type': 'application/json', ...(token && { 'Authorization': `Bearer ${token}` }) }
+  }
+
+  const loadProvenances = async () => {
+    try {
+      setLoading(true)
+      const response = await fetch(`${API_URL}/api/config/event-provenances`, { headers: getHeaders() })
+      if (response.ok) {
+        const data = await response.json()
+        const rawData = data.data || data || []
+        const transformed = rawData.map((p: any) => ({
+          id: p.id,
+          code: p.code,
+          name: p.name,
+          description: p.description,
+          color: p.color || '#6366f1',
+          icon: p.icon || 'map-pin',
+          isActive: p.is_active ?? p.isActive ?? true,
+          sortOrder: p.sort_order ?? p.sortOrder ?? 0
+        }))
+        setProvenances(transformed)
+      }
+    } catch (error) {
+      console.error('Error loading provenances:', error)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    loadProvenances()
+  }, [])
+
+  const filteredProvenances = provenances.filter(p => {
+    if (!showInactive && !p.isActive) return false
+    if (searchTerm) {
+      const search = searchTerm.toLowerCase()
+      return p.name.toLowerCase().includes(search) || p.code.toLowerCase().includes(search)
+    }
+    return true
+  })
+
+  // Pagination logic
+  const totalItems = filteredProvenances.length
+  const totalPages = Math.ceil(totalItems / itemsPerPage)
+  const startIndex = (currentPageNum - 1) * itemsPerPage
+  const endIndex = startIndex + itemsPerPage
+  const paginatedProvenances = filteredProvenances.slice(startIndex, endIndex)
+
+  // Reset page when search changes
+  useEffect(() => {
+    setCurrentPageNum(1)
+  }, [searchTerm, showInactive])
+
+  const handleCreate = () => {
+    setEditingProvenance(null)
+    setFormData({ name: '', description: '', color: '#6366f1', icon: 'map-pin', isActive: true })
+    setCurrentView('form')
+  }
+
+  const handleEdit = (p: EventProvenanceData) => {
+    setEditingProvenance(p)
+    setFormData({
+      name: p.name,
+      description: p.description || '',
+      color: p.color,
+      icon: p.icon,
+      isActive: p.isActive
+    })
+    setCurrentView('form')
+  }
+
+  const handleBack = () => {
+    setCurrentView('list')
+    setEditingProvenance(null)
+  }
+
+  const handleSave = async () => {
+    if (!formData.name) return
+    try {
+      const generatedCode = editingProvenance?.code || formData.name
+        .toUpperCase()
+        .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+        .replace(/[^A-Z0-9]+/g, '_')
+        .replace(/^_|_$/g, '')
+      const payload = {
+        code: generatedCode,
+        name: formData.name,
+        description: formData.description || null,
+        color: formData.color,
+        icon: formData.icon,
+        isActive: formData.isActive,
+        sortOrder: editingProvenance?.sortOrder || provenances.length + 1
+      }
+      const url = editingProvenance
+        ? `${API_URL}/api/config/event-provenances/${editingProvenance.id}`
+        : `${API_URL}/api/config/event-provenances`
+      const response = await fetch(url, {
+        method: editingProvenance ? 'PUT' : 'POST',
+        headers: getHeaders(),
+        body: JSON.stringify(payload)
+      })
+      if (response.ok) {
+        loadProvenances()
+        setCurrentView('list')
+      } else {
+        const errorData = await response.json()
+        console.error('Error saving:', errorData)
+      }
+    } catch (error) {
+      console.error('Error saving provenance:', error)
+    }
+  }
+
+  const handleDelete = async () => {
+    if (!deletingProvenance) return
+    try {
+      const response = await fetch(`${API_URL}/api/config/event-provenances/${deletingProvenance.id}`, {
+        method: 'DELETE',
+        headers: getHeaders()
+      })
+      if (response.ok) {
+        loadProvenances()
+        setShowDeleteModal(false)
+        setDeletingProvenance(null)
+      }
+    } catch (error) {
+      console.error('Error deleting provenance:', error)
+    }
+  }
+
+  // Icon mapping
+  const iconComponents: Record<string, React.ReactNode> = {
+    'map-pin': <MapPin className="w-5 h-5" />,
+    'microscope': <Microscope className="w-5 h-5" />,
+    'user': <User className="w-5 h-5" />,
+    'stethoscope': <Stethoscope className="w-5 h-5" />,
+    'eye': <Eye className="w-5 h-5" />,
+    'megaphone': <Megaphone className="w-5 h-5" />,
+    'help': <HelpCircle className="w-5 h-5" />,
+    'alert-triangle': <AlertTriangle className="w-5 h-5" />,
+    'bell': <Bell className="w-5 h-5" />,
+    'radio': <RadioIcon className="w-5 h-5" />,
+    'phone': <Phone className="w-5 h-5" />,
+    'mail': <Mail className="w-5 h-5" />,
+    'globe': <Globe className="w-5 h-5" />,
+    'building': <Building2 className="w-5 h-5" />,
+    'users': <Users className="w-5 h-5" />,
+    'clipboard': <ClipboardList className="w-5 h-5" />,
+    'file-text': <FileText className="w-5 h-5" />,
+    'shield': <Shield className="w-5 h-5" />,
+    'activity': <Activity className="w-5 h-5" />,
+    'target': <Target className="w-5 h-5" />,
+  }
+
+  const iconOptions = [
+    { value: 'map-pin', label: 'Terrain', category: 'Localisation' },
+    { value: 'microscope', label: 'Laboratoire', category: 'Analyse' },
+    { value: 'user', label: 'Utilisateur', category: 'Personnes' },
+    { value: 'users', label: 'Groupe', category: 'Personnes' },
+    { value: 'stethoscope', label: 'Vétérinaire', category: 'Médical' },
+    { value: 'eye', label: 'Surveillance', category: 'Observation' },
+    { value: 'megaphone', label: 'Annonce', category: 'Communication' },
+    { value: 'bell', label: 'Alerte', category: 'Communication' },
+    { value: 'radio', label: 'Radio', category: 'Communication' },
+    { value: 'phone', label: 'Téléphone', category: 'Communication' },
+    { value: 'mail', label: 'Courrier', category: 'Communication' },
+    { value: 'globe', label: 'International', category: 'Réseau' },
+    { value: 'building', label: 'Institution', category: 'Organisation' },
+    { value: 'clipboard', label: 'Rapport', category: 'Documents' },
+    { value: 'file-text', label: 'Document', category: 'Documents' },
+    { value: 'shield', label: 'Officiel', category: 'Sécurité' },
+    { value: 'activity', label: 'Activité', category: 'Surveillance' },
+    { value: 'target', label: 'Ciblé', category: 'Surveillance' },
+    { value: 'alert-triangle', label: 'Alerte', category: 'Urgence' },
+    { value: 'help', label: 'Autre', category: 'Divers' },
+  ]
+
+  const filteredIcons = iconOptions.filter(icon =>
+    icon.label.toLowerCase().includes(iconSearch.toLowerCase()) ||
+    icon.category.toLowerCase().includes(iconSearch.toLowerCase())
+  )
+
+  const getIconComponent = (iconName: string) => iconComponents[iconName] || <MapPin className="w-5 h-5" />
+
+  // FORM VIEW
+  if (currentView === 'form') {
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <h1 className="text-2xl font-display font-bold text-slate-800">
+            {editingProvenance ? 'Modifier la provenance' : 'Nouvelle provenance'}
+          </h1>
+          <button onClick={handleBack} className="px-4 py-2 border border-slate-300 text-slate-700 rounded-xl hover:bg-slate-50 flex items-center gap-2">
+            <ArrowLeft className="w-4 h-4" /> Retour
+          </button>
+        </div>
+
+        <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 space-y-6">
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">Nom *</label>
+            <input type="text" value={formData.name}
+              onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+              placeholder="Rapport de terrain"
+              className="w-full px-4 py-2 border border-slate-300 rounded-xl focus:ring-2 focus:ring-primary-500" />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">Description</label>
+            <textarea value={formData.description}
+              onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+              rows={2} placeholder="Description de la source de signalement..."
+              className="w-full px-4 py-2 border border-slate-300 rounded-xl focus:ring-2 focus:ring-primary-500" />
+          </div>
+
+          {/* Couleur et Icône */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">Couleur</label>
+              <div className="flex items-center gap-3">
+                <input type="color" value={formData.color}
+                  onChange={(e) => setFormData({ ...formData, color: e.target.value })}
+                  className="w-12 h-10 rounded-lg border border-slate-300 cursor-pointer" />
+                <input type="text" value={formData.color}
+                  onChange={(e) => setFormData({ ...formData, color: e.target.value })}
+                  placeholder="#6366f1"
+                  className="flex-1 px-4 py-2 border border-slate-300 rounded-xl focus:ring-2 focus:ring-primary-500 font-mono text-sm" />
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">Icône</label>
+              <div className="relative" ref={iconDropdownRef}>
+                <button type="button" onClick={() => setShowIconDropdown(!showIconDropdown)}
+                  className="w-full px-4 py-2 border border-slate-300 rounded-xl focus:ring-2 focus:ring-primary-500 bg-white flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <span style={{ color: formData.color }}>{getIconComponent(formData.icon)}</span>
+                    <span className="text-slate-700">{iconOptions.find(i => i.value === formData.icon)?.label || 'Sélectionner'}</span>
+                  </div>
+                  <ChevronDown className={`w-4 h-4 text-slate-400 transition-transform ${showIconDropdown ? 'rotate-180' : ''}`} />
+                </button>
+
+                {showIconDropdown && (
+                  <div className="absolute z-20 w-full mt-1 bg-white border border-slate-200 rounded-xl shadow-lg">
+                    <div className="p-2 border-b border-slate-100">
+                      <div className="relative">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                        <input type="text" value={iconSearch} onChange={(e) => setIconSearch(e.target.value)}
+                          placeholder="Rechercher une icône..."
+                          className="w-full pl-9 pr-4 py-2 text-sm border border-slate-200 rounded-lg focus:ring-2 focus:ring-primary-500" />
+                      </div>
+                    </div>
+                    <div className="max-h-64 overflow-y-auto p-2">
+                      {filteredIcons.length === 0 ? (
+                        <p className="px-3 py-2 text-sm text-slate-500 text-center">Aucune icône trouvée</p>
+                      ) : (
+                        <div className="grid grid-cols-2 gap-1">
+                          {filteredIcons.map(icon => (
+                            <button key={icon.value} type="button"
+                              onClick={() => { setFormData({ ...formData, icon: icon.value }); setShowIconDropdown(false); setIconSearch('') }}
+                              className={`flex items-center gap-2 px-3 py-2 rounded-lg text-left transition-colors ${
+                                formData.icon === icon.value ? 'bg-primary-100 text-primary-700' : 'hover:bg-slate-50 text-slate-700'
+                              }`}>
+                              <span style={{ color: formData.color }}>{getIconComponent(icon.value)}</span>
+                              <span className="text-sm truncate">{icon.label}</span>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+
+          <div className="flex items-center justify-between p-4 bg-slate-50 rounded-xl">
+            <div>
+              <p className="font-medium text-slate-800">Provenance active</p>
+              <p className="text-sm text-slate-500">Les provenances inactives ne sont pas disponibles à la sélection</p>
+            </div>
+            <button type="button" onClick={() => setFormData({ ...formData, isActive: !formData.isActive })}
+              className={`w-12 h-6 rounded-full transition-colors ${formData.isActive ? 'bg-primary-600' : 'bg-slate-300'}`}>
+              <div className={`w-5 h-5 bg-white rounded-full shadow transition-transform ${formData.isActive ? 'translate-x-6' : 'translate-x-0.5'}`} />
+            </button>
+          </div>
+
+          <div className="flex justify-end gap-3 pt-4 border-t border-slate-200">
+            <button onClick={handleBack} className="px-4 py-2 border border-slate-300 text-slate-700 rounded-xl hover:bg-slate-50">
+              Annuler
+            </button>
+            <button onClick={handleSave} className="px-4 py-2 bg-primary-600 text-white rounded-xl hover:bg-primary-700 flex items-center gap-2">
+              <Save className="w-4 h-4" /> {editingProvenance ? 'Enregistrer' : 'Créer'}
+            </button>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  // LIST VIEW
+  return (
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-display font-bold text-slate-800">Provenances des événements</h1>
+          <p className="text-slate-500">Gérez les sources de signalement des événements sanitaires</p>
+        </div>
+        <button onClick={handleCreate} className="px-4 py-2 bg-primary-600 text-white rounded-xl hover:bg-primary-700 flex items-center gap-2">
+          <Plus className="w-4 h-4" /> Nouvelle provenance
+        </button>
+      </div>
+
+      {/* Filters */}
+      <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-4">
+        <div className="flex flex-col sm:flex-row gap-4">
+          <div className="flex-1 relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+            <input type="text" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)}
+              placeholder="Rechercher une provenance..."
+              className="w-full pl-10 pr-4 py-2 border border-slate-300 rounded-xl focus:ring-2 focus:ring-primary-500" />
+          </div>
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input type="checkbox" checked={showInactive} onChange={(e) => setShowInactive(e.target.checked)}
+              className="rounded text-primary-600 focus:ring-primary-500" />
+            <span className="text-sm text-slate-600">Afficher inactifs</span>
+          </label>
+        </div>
+      </div>
+
+      {/* Provenances Grid */}
+      {loading ? (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {[1, 2, 3, 4, 5, 6].map(i => (
+            <div key={i} className="h-40 bg-slate-100 rounded-2xl animate-pulse" />
+          ))}
+        </div>
+      ) : filteredProvenances.length === 0 ? (
+        <div className="text-center py-12">
+          <div className="w-16 h-16 bg-slate-100 rounded-2xl flex items-center justify-center mx-auto mb-4">
+            <MapPin className="w-8 h-8 text-slate-400" />
+          </div>
+          <p className="text-slate-500 mb-4">Aucune provenance trouvée</p>
+          <button onClick={handleCreate} className="px-4 py-2 bg-primary-600 text-white rounded-xl hover:bg-primary-700">
+            Créer une provenance
+          </button>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {paginatedProvenances.map(p => (
+            <div key={p.id} className={`bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden group ${!p.isActive ? 'opacity-60' : ''}`}>
+              <div className="h-2" style={{ backgroundColor: p.color }} />
+              <div className="p-4">
+                <div className="flex items-start justify-between mb-3">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2.5 rounded-xl" style={{ backgroundColor: `${p.color}20`, color: p.color }}>
+                      {getIconComponent(p.icon)}
+                    </div>
+                    <div>
+                      <h3 className="font-semibold text-slate-800">{p.name}</h3>
+                      <p className="text-xs text-slate-500 font-mono">{p.code}</p>
+                    </div>
+                  </div>
+                  <span className={`px-2 py-1 text-xs rounded-full ${p.isActive ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-500'}`}>
+                    {p.isActive ? 'Actif' : 'Inactif'}
+                  </span>
+                </div>
+                {p.description && (
+                  <p className="text-sm text-slate-500 mb-4 line-clamp-2">{p.description}</p>
+                )}
+                <div className="flex items-center justify-between pt-3 border-t border-slate-100">
+                  <div className="flex items-center gap-2">
+                    <div className="w-4 h-4 rounded-full" style={{ backgroundColor: p.color }} />
+                    <span className="text-xs text-slate-500">{p.color}</span>
+                  </div>
+                  <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <button onClick={() => handleEdit(p)} className="p-2 text-slate-400 hover:text-primary-600 hover:bg-primary-50 rounded-lg">
+                      <Edit3 className="w-4 h-4" />
+                    </button>
+                    <button onClick={() => { setDeletingProvenance(p); setShowDeleteModal(true) }} className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg">
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Modern Pagination */}
+      {totalItems > 0 && (
+        <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-4">
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+            <div className="flex items-center gap-4">
+              <div className="text-sm text-slate-500">
+                Affichage de <span className="font-semibold text-slate-700">{startIndex + 1}</span> à{' '}
+                <span className="font-semibold text-slate-700">{Math.min(endIndex, totalItems)}</span> sur{' '}
+                <span className="font-semibold text-slate-700">{totalItems}</span> provenances
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-slate-500">Afficher</span>
+                <select
+                  value={itemsPerPage}
+                  onChange={(e) => { setItemsPerPage(Number(e.target.value)); setCurrentPageNum(1); }}
+                  className="px-2 py-1 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                >
+                  <option value={6}>6</option>
+                  <option value={12}>12</option>
+                  <option value={24}>24</option>
+                  <option value={48}>48</option>
+                </select>
+                <span className="text-sm text-slate-500">par page</span>
+              </div>
+            </div>
+
+            {totalPages > 1 && (
+            <div className="flex items-center gap-1">
+              <button
+                onClick={() => setCurrentPageNum(1)}
+                disabled={currentPageNum === 1}
+                className="flex items-center p-2 rounded-lg text-slate-500 hover:text-primary-600 hover:bg-primary-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              >
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M11 19l-7-7 7-7m8 14l-7-7 7-7" />
+                </svg>
+              </button>
+              <button
+                onClick={() => setCurrentPageNum(p => Math.max(1, p - 1))}
+                disabled={currentPageNum === 1}
+                className="p-2 rounded-lg text-slate-500 hover:text-primary-600 hover:bg-primary-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              >
+                <ChevronLeft className="w-4 h-4" />
+              </button>
+              <div className="flex items-center gap-1 mx-2">
+                {Array.from({ length: totalPages }, (_, i) => i + 1)
+                  .filter(page => {
+                    if (totalPages <= 7) return true
+                    if (page === 1 || page === totalPages) return true
+                    if (Math.abs(page - currentPageNum) <= 1) return true
+                    return false
+                  })
+                  .map((page, idx, arr) => {
+                    const showEllipsis = idx > 0 && page - arr[idx - 1] > 1
+                    return (
+                      <div key={page} className="flex items-center">
+                        {showEllipsis && <span className="px-2 text-slate-400">...</span>}
+                        <button
+                          onClick={() => setCurrentPageNum(page)}
+                          className={`min-w-[36px] h-9 px-3 rounded-lg text-sm font-medium transition-all ${
+                            currentPageNum === page
+                              ? 'bg-gradient-to-r from-primary-500 to-primary-600 text-white shadow-md'
+                              : 'text-slate-600 hover:bg-slate-100'
+                          }`}
+                        >
+                          {page}
+                        </button>
+                      </div>
+                    )
+                  })}
+              </div>
+              <button
+                onClick={() => setCurrentPageNum(p => Math.min(totalPages, p + 1))}
+                disabled={currentPageNum === totalPages}
+                className="p-2 rounded-lg text-slate-500 hover:text-primary-600 hover:bg-primary-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              >
+                <ChevronRight className="w-4 h-4" />
+              </button>
+              <button
+                onClick={() => setCurrentPageNum(totalPages)}
+                disabled={currentPageNum === totalPages}
+                className="flex items-center p-2 rounded-lg text-slate-500 hover:text-primary-600 hover:bg-primary-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              >
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M13 5l7 7-7 7M5 5l7 7-7 7" />
+                </svg>
+              </button>
+            </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Delete Modal */}
+      {showDeleteModal && deletingProvenance && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-6 text-center">
+            <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
+              <AlertTriangle className="w-8 h-8 text-red-600" />
+            </div>
+            <h3 className="text-lg font-semibold text-slate-800 mb-2">Supprimer la provenance</h3>
+            <p className="text-slate-500 mb-6">Supprimer "{deletingProvenance.name}" ? Cette action est irréversible.</p>
+            <div className="flex gap-3 justify-center">
+              <button onClick={() => setShowDeleteModal(false)} className="px-4 py-2 border border-slate-300 text-slate-700 rounded-xl hover:bg-slate-50">
+                Annuler
+              </button>
+              <button onClick={handleDelete} className="px-4 py-2 bg-red-600 text-white rounded-xl hover:bg-red-700">
+                Supprimer
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+/* ============================================
+   KNOWLEDGE BASE PAGE
+   ============================================ */
+interface KnowledgeCategory {
+  id: string
+  code: string
+  name: string
+  description?: string
+  icon?: string
+  color?: string
+  articleCount?: number
+  isActive: boolean
+}
+
+interface KnowledgeTag {
+  id: string
+  name: string
+  slug: string
+  color: string
+  usageCount: number
+}
+
+interface KnowledgeArticle {
+  id: string
+  title: string
+  slug: string
+  content: string
+  excerpt?: string
+  categoryId?: string
+  categoryName?: string
+  coverImage?: string
+  isPublished: boolean
+  isFeatured: boolean
+  isPinned: boolean
+  viewCount: number
+  likeCount: number
+  commentCount: number
+  authorName?: string
+  createdAt: string
+  updatedAt: string
+  tags?: KnowledgeTag[]
+}
+
+function KnowledgeBasePage() {
+  const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
+
+  // View states
+  const [currentView, setCurrentView] = useState<'list' | 'detail' | 'form'>('list')
+  const [articles, setArticles] = useState<KnowledgeArticle[]>([])
+  const [categories, setCategories] = useState<KnowledgeCategory[]>([])
+  const [tags, setTags] = useState<KnowledgeTag[]>([])
+  const [loading, setLoading] = useState(true)
+  const [selectedArticle, setSelectedArticle] = useState<KnowledgeArticle | null>(null)
+
+  // Filters
+  const [searchTerm, setSearchTerm] = useState('')
+  const [selectedCategory, setSelectedCategory] = useState<string | null>(null)
+  const [selectedTag, setSelectedTag] = useState<string | null>(null)
+  const [showDrafts, setShowDrafts] = useState(false)
+
+  // Pagination
+  const [currentPageNum, setCurrentPageNum] = useState(1)
+  const [itemsPerPage, setItemsPerPage] = useState(6)
+  const [totalArticles, setTotalArticles] = useState(0)
+
+  // Form state
+  const [editingArticle, setEditingArticle] = useState<KnowledgeArticle | null>(null)
+  const [articleForm, setArticleForm] = useState({
+    title: '',
+    content: '',
+    excerpt: '',
+    categoryId: '',
+    isPublished: false,
+    isFeatured: false
+  })
+
+  // Delete modal
+  const [showDeleteModal, setShowDeleteModal] = useState(false)
+  const [deletingArticle, setDeletingArticle] = useState<KnowledgeArticle | null>(null)
+
+  const getHeaders = () => {
+    const authData = localStorage.getItem('auth_token')
+    const token = authData ? JSON.parse(authData).token : null
+    return { 'Content-Type': 'application/json', ...(token && { 'Authorization': `Bearer ${token}` }) }
+  }
+
+  // Load categories
+  const loadCategories = async () => {
+    try {
+      const response = await fetch(`${API_URL}/api/knowledge/categories`, { headers: getHeaders() })
+      if (response.ok) {
+        const data = await response.json()
+        const cats = data.data || data || []
+        setCategories(cats.map((c: any) => ({
+          id: c.id,
+          code: c.code,
+          name: c.name,
+          description: c.description,
+          icon: c.icon,
+          color: c.color || '#6366f1',
+          articleCount: c.article_count || c.articleCount || 0,
+          isActive: c.is_active ?? true
+        })))
+      }
+    } catch (error) {
+      console.error('Error loading categories:', error)
+    }
+  }
+
+  // Load tags
+  const loadTags = async () => {
+    try {
+      const response = await fetch(`${API_URL}/api/knowledge/tags`, { headers: getHeaders() })
+      if (response.ok) {
+        const data = await response.json()
+        const tagList = data.data || data || []
+        setTags(tagList.map((t: any) => ({
+          id: t.id,
+          name: t.name,
+          slug: t.slug,
+          color: t.color || '#6366f1',
+          usageCount: t.usage_count || t.usageCount || 0
+        })))
+      }
+    } catch (error) {
+      console.error('Error loading tags:', error)
+    }
+  }
+
+  // Load articles
+  const loadArticles = async () => {
+    try {
+      setLoading(true)
+      const params = new URLSearchParams()
+      params.append('page', currentPageNum.toString())
+      params.append('limit', itemsPerPage.toString())
+      if (!showDrafts) params.append('isPublished', 'true')
+      if (selectedCategory) params.append('categoryId', selectedCategory)
+      if (selectedTag) params.append('tagId', selectedTag)
+      if (searchTerm) params.append('search', searchTerm)
+
+      const response = await fetch(`${API_URL}/api/knowledge/articles?${params}`, { headers: getHeaders() })
+      if (response.ok) {
+        const data = await response.json()
+        const result = data.data || data || {}
+        const articleList = result.articles || []
+        setArticles(articleList.map((a: any) => ({
+          id: a.id,
+          title: a.title,
+          slug: a.slug,
+          content: a.content,
+          excerpt: a.excerpt,
+          categoryId: a.category_id,
+          categoryName: a.category_name,
+          coverImage: a.cover_image,
+          isPublished: a.is_published,
+          isFeatured: a.is_featured,
+          isPinned: a.is_pinned,
+          viewCount: a.view_count || 0,
+          likeCount: a.like_count || 0,
+          commentCount: a.comment_count || 0,
+          authorName: a.author_name,
+          createdAt: a.created_at,
+          updatedAt: a.updated_at
+        })))
+        setTotalArticles(result.pagination?.total || articleList.length)
+      }
+    } catch (error) {
+      console.error('Error loading articles:', error)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    loadCategories()
+    loadTags()
+  }, [])
+
+  useEffect(() => {
+    loadArticles()
+  }, [currentPageNum, itemsPerPage, selectedCategory, selectedTag, showDrafts, searchTerm])
+
+  useEffect(() => {
+    setCurrentPageNum(1)
+  }, [searchTerm, selectedCategory, selectedTag, showDrafts])
+
+  const totalPages = Math.ceil(totalArticles / itemsPerPage)
+
+  const handleViewArticle = async (article: KnowledgeArticle) => {
+    try {
+      const response = await fetch(`${API_URL}/api/knowledge/articles/${article.id}`, { headers: getHeaders() })
+      if (response.ok) {
+        const data = await response.json()
+        const a = data.data || data
+        setSelectedArticle({
+          ...article,
+          content: a.content,
+          tags: a.tags?.map((t: any) => ({ id: t.id, name: t.name, slug: t.slug, color: t.color, usageCount: 0 })) || []
+        })
+        setCurrentView('detail')
+      }
+    } catch (error) {
+      console.error('Error loading article:', error)
+    }
+  }
+
+  const handleCreateArticle = () => {
+    setEditingArticle(null)
+    setArticleForm({ title: '', content: '', excerpt: '', categoryId: '', isPublished: false, isFeatured: false })
+    setCurrentView('form')
+  }
+
+  const handleEditArticle = (article: KnowledgeArticle) => {
+    setEditingArticle(article)
+    setArticleForm({
+      title: article.title,
+      content: article.content,
+      excerpt: article.excerpt || '',
+      categoryId: article.categoryId || '',
+      isPublished: article.isPublished,
+      isFeatured: article.isFeatured
+    })
+    setCurrentView('form')
+  }
+
+  const handleSaveArticle = async () => {
+    if (!articleForm.title || !articleForm.content) return
+    try {
+      const slug = editingArticle?.slug || articleForm.title
+        .toLowerCase()
+        .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-|-$/g, '')
+      const payload = {
+        title: articleForm.title,
+        slug,
+        content: articleForm.content,
+        excerpt: articleForm.excerpt || null,
+        categoryId: articleForm.categoryId || null,
+        isPublished: articleForm.isPublished,
+        isFeatured: articleForm.isFeatured
+      }
+      const url = editingArticle
+        ? `${API_URL}/api/knowledge/articles/${editingArticle.id}`
+        : `${API_URL}/api/knowledge/articles`
+      const response = await fetch(url, {
+        method: editingArticle ? 'PUT' : 'POST',
+        headers: getHeaders(),
+        body: JSON.stringify(payload)
+      })
+      if (response.ok) {
+        loadArticles()
+        setCurrentView('list')
+      } else {
+        const errorData = await response.json()
+        console.error('Error saving:', errorData)
+      }
+    } catch (error) {
+      console.error('Error saving article:', error)
+    }
+  }
+
+  const handleDeleteArticle = async () => {
+    if (!deletingArticle) return
+    try {
+      const response = await fetch(`${API_URL}/api/knowledge/articles/${deletingArticle.id}`, {
+        method: 'DELETE',
+        headers: getHeaders()
+      })
+      if (response.ok) {
+        loadArticles()
+        setShowDeleteModal(false)
+        setDeletingArticle(null)
+      }
+    } catch (error) {
+      console.error('Error deleting article:', error)
+    }
+  }
+
+  const formatDate = (dateStr: string) => {
+    return new Date(dateStr).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' })
+  }
+
+  // ARTICLE DETAIL VIEW
+  if (currentView === 'detail' && selectedArticle) {
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <button onClick={() => setCurrentView('list')} className="flex items-center gap-2 text-slate-600 hover:text-slate-800">
+            <ArrowLeft className="w-4 h-4" /> Retour à la liste
+          </button>
+          <div className="flex items-center gap-2">
+            <button onClick={() => handleEditArticle(selectedArticle)} className="px-4 py-2 border border-slate-300 text-slate-700 rounded-xl hover:bg-slate-50 flex items-center gap-2">
+              <Edit3 className="w-4 h-4" /> Modifier
+            </button>
+          </div>
+        </div>
+
+        <article className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+          <div className="p-8">
+            <div className="flex items-center gap-3 mb-4">
+              {selectedArticle.categoryName && (
+                <span className="px-3 py-1 text-xs font-medium rounded-full bg-primary-100 text-primary-700">
+                  {selectedArticle.categoryName}
+                </span>
+              )}
+              {selectedArticle.isFeatured && (
+                <span className="px-3 py-1 text-xs font-medium rounded-full bg-amber-100 text-amber-700 flex items-center gap-1">
+                  <Star className="w-3 h-3" /> À la une
+                </span>
+              )}
+              {!selectedArticle.isPublished && (
+                <span className="px-3 py-1 text-xs font-medium rounded-full bg-slate-100 text-slate-600">Brouillon</span>
+              )}
+            </div>
+
+            <h1 className="text-3xl font-display font-bold text-slate-800 mb-4">{selectedArticle.title}</h1>
+
+            <div className="flex items-center gap-6 text-sm text-slate-500 mb-6 pb-6 border-b border-slate-100">
+              <span className="flex items-center gap-1"><User className="w-4 h-4" /> {selectedArticle.authorName || 'Anonyme'}</span>
+              <span className="flex items-center gap-1"><Clock className="w-4 h-4" /> {formatDate(selectedArticle.createdAt)}</span>
+              <span className="flex items-center gap-1"><Eye className="w-4 h-4" /> {selectedArticle.viewCount} vues</span>
+              <span className="flex items-center gap-1"><Heart className="w-4 h-4" /> {selectedArticle.likeCount}</span>
+              <span className="flex items-center gap-1"><MessageSquare className="w-4 h-4" /> {selectedArticle.commentCount} commentaires</span>
+            </div>
+
+            {selectedArticle.tags && selectedArticle.tags.length > 0 && (
+              <div className="flex flex-wrap gap-2 mb-6">
+                {selectedArticle.tags.map(tag => (
+                  <span key={tag.id} className="px-2 py-1 text-xs rounded-full" style={{ backgroundColor: `${tag.color}20`, color: tag.color }}>
+                    {tag.name}
+                  </span>
+                ))}
+              </div>
+            )}
+
+            <div className="prose prose-slate max-w-none">
+              <div dangerouslySetInnerHTML={{ __html: selectedArticle.content.replace(/\n/g, '<br />') }} />
+            </div>
+          </div>
+        </article>
+      </div>
+    )
+  }
+
+  // ARTICLE FORM VIEW
+  if (currentView === 'form') {
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <h1 className="text-2xl font-display font-bold text-slate-800">
+            {editingArticle ? 'Modifier l\'article' : 'Nouvel article'}
+          </h1>
+          <button onClick={() => setCurrentView('list')} className="px-4 py-2 border border-slate-300 text-slate-700 rounded-xl hover:bg-slate-50 flex items-center gap-2">
+            <ArrowLeft className="w-4 h-4" /> Retour
+          </button>
+        </div>
+
+        <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 space-y-6">
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">Titre *</label>
+            <input type="text" value={articleForm.title}
+              onChange={(e) => setArticleForm({ ...articleForm, title: e.target.value })}
+              placeholder="Titre de l'article"
+              className="w-full px-4 py-2 border border-slate-300 rounded-xl focus:ring-2 focus:ring-primary-500" />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">Résumé</label>
+            <textarea value={articleForm.excerpt}
+              onChange={(e) => setArticleForm({ ...articleForm, excerpt: e.target.value })}
+              rows={2} placeholder="Bref résumé de l'article..."
+              className="w-full px-4 py-2 border border-slate-300 rounded-xl focus:ring-2 focus:ring-primary-500" />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">Catégorie</label>
+            <select value={articleForm.categoryId}
+              onChange={(e) => setArticleForm({ ...articleForm, categoryId: e.target.value })}
+              className="w-full px-4 py-2 border border-slate-300 rounded-xl focus:ring-2 focus:ring-primary-500">
+              <option value="">Aucune catégorie</option>
+              {categories.map(cat => (
+                <option key={cat.id} value={cat.id}>{cat.name}</option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">Contenu *</label>
+            <textarea value={articleForm.content}
+              onChange={(e) => setArticleForm({ ...articleForm, content: e.target.value })}
+              rows={15} placeholder="Contenu de l'article..."
+              className="w-full px-4 py-2 border border-slate-300 rounded-xl focus:ring-2 focus:ring-primary-500 font-mono text-sm" />
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="flex items-center justify-between p-4 bg-slate-50 rounded-xl">
+              <div>
+                <p className="font-medium text-slate-800">Publier</p>
+                <p className="text-sm text-slate-500">Rendre l'article visible</p>
+              </div>
+              <button type="button" onClick={() => setArticleForm({ ...articleForm, isPublished: !articleForm.isPublished })}
+                className={`w-12 h-6 rounded-full transition-colors ${articleForm.isPublished ? 'bg-primary-600' : 'bg-slate-300'}`}>
+                <div className={`w-5 h-5 bg-white rounded-full shadow transition-transform ${articleForm.isPublished ? 'translate-x-6' : 'translate-x-0.5'}`} />
+              </button>
+            </div>
+
+            <div className="flex items-center justify-between p-4 bg-slate-50 rounded-xl">
+              <div>
+                <p className="font-medium text-slate-800">À la une</p>
+                <p className="text-sm text-slate-500">Mettre en avant</p>
+              </div>
+              <button type="button" onClick={() => setArticleForm({ ...articleForm, isFeatured: !articleForm.isFeatured })}
+                className={`w-12 h-6 rounded-full transition-colors ${articleForm.isFeatured ? 'bg-amber-500' : 'bg-slate-300'}`}>
+                <div className={`w-5 h-5 bg-white rounded-full shadow transition-transform ${articleForm.isFeatured ? 'translate-x-6' : 'translate-x-0.5'}`} />
+              </button>
+            </div>
+          </div>
+
+          <div className="flex justify-end gap-3 pt-4 border-t border-slate-200">
+            <button onClick={() => setCurrentView('list')} className="px-4 py-2 border border-slate-300 text-slate-700 rounded-xl hover:bg-slate-50">
+              Annuler
+            </button>
+            <button onClick={handleSaveArticle} className="px-4 py-2 bg-primary-600 text-white rounded-xl hover:bg-primary-700 flex items-center gap-2">
+              <Save className="w-4 h-4" /> {editingArticle ? 'Enregistrer' : 'Créer'}
+            </button>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  // LIST VIEW
+  return (
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-display font-bold text-slate-800">Base de connaissances</h1>
+          <p className="text-slate-500">Documentation et ressources techniques</p>
+        </div>
+        <button onClick={handleCreateArticle} className="px-4 py-2 bg-primary-600 text-white rounded-xl hover:bg-primary-700 flex items-center gap-2">
+          <Plus className="w-4 h-4" /> Nouvel article
+        </button>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+        {/* Sidebar - Categories & Tags */}
+        <div className="lg:col-span-1 space-y-4">
+          {/* Categories */}
+          <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-4">
+            <h3 className="font-semibold text-slate-800 mb-3 flex items-center gap-2">
+              <Folder className="w-4 h-4 text-primary-600" /> Catégories
+            </h3>
+            <div className="space-y-1">
+              <button
+                onClick={() => setSelectedCategory(null)}
+                className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-colors ${
+                  !selectedCategory ? 'bg-primary-100 text-primary-700' : 'hover:bg-slate-50 text-slate-600'
+                }`}
+              >
+                Toutes les catégories
+              </button>
+              {categories.map(cat => (
+                <button
+                  key={cat.id}
+                  onClick={() => setSelectedCategory(cat.id)}
+                  className={`w-full text-left px-3 py-2 rounded-lg text-sm flex items-center justify-between transition-colors ${
+                    selectedCategory === cat.id ? 'bg-primary-100 text-primary-700' : 'hover:bg-slate-50 text-slate-600'
+                  }`}
+                >
+                  <span className="flex items-center gap-2">
+                    <span className="w-2 h-2 rounded-full" style={{ backgroundColor: cat.color }} />
+                    {cat.name}
+                  </span>
+                  <span className="text-xs text-slate-400">{cat.articleCount}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Tags */}
+          <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-4">
+            <h3 className="font-semibold text-slate-800 mb-3 flex items-center gap-2">
+              <Tag className="w-4 h-4 text-primary-600" /> Tags populaires
+            </h3>
+            <div className="flex flex-wrap gap-2">
+              {tags.slice(0, 10).map(tag => (
+                <button
+                  key={tag.id}
+                  onClick={() => setSelectedTag(selectedTag === tag.id ? null : tag.id)}
+                  className={`px-2 py-1 text-xs rounded-full transition-colors ${
+                    selectedTag === tag.id
+                      ? 'ring-2 ring-offset-1'
+                      : 'hover:opacity-80'
+                  }`}
+                  style={{
+                    backgroundColor: `${tag.color}20`,
+                    color: tag.color,
+                    ...(selectedTag === tag.id && { ringColor: tag.color })
+                  }}
+                >
+                  {tag.name}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* Main Content */}
+        <div className="lg:col-span-3 space-y-4">
+          {/* Search & Filters */}
+          <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-4">
+            <div className="flex flex-col sm:flex-row gap-4">
+              <div className="flex-1 relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                <input type="text" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)}
+                  placeholder="Rechercher un article..."
+                  className="w-full pl-10 pr-4 py-2 border border-slate-300 rounded-xl focus:ring-2 focus:ring-primary-500" />
+              </div>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input type="checkbox" checked={showDrafts} onChange={(e) => setShowDrafts(e.target.checked)}
+                  className="rounded text-primary-600 focus:ring-primary-500" />
+                <span className="text-sm text-slate-600">Inclure brouillons</span>
+              </label>
+            </div>
+          </div>
+
+          {/* Articles Grid */}
+          {loading ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {[1, 2, 3, 4].map(i => (
+                <div key={i} className="h-48 bg-slate-100 rounded-2xl animate-pulse" />
+              ))}
+            </div>
+          ) : articles.length === 0 ? (
+            <div className="text-center py-12 bg-white rounded-2xl border border-slate-200">
+              <div className="w-16 h-16 bg-slate-100 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                <BookOpen className="w-8 h-8 text-slate-400" />
+              </div>
+              <p className="text-slate-500 mb-4">Aucun article trouvé</p>
+              <button onClick={handleCreateArticle} className="px-4 py-2 bg-primary-600 text-white rounded-xl hover:bg-primary-700">
+                Créer un article
+              </button>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {articles.map(article => (
+                <div key={article.id} className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden group hover:shadow-md transition-shadow">
+                  <div className="p-5">
+                    <div className="flex items-center gap-2 mb-3">
+                      {article.categoryName && (
+                        <span className="px-2 py-0.5 text-xs font-medium rounded-full bg-primary-100 text-primary-700">
+                          {article.categoryName}
+                        </span>
+                      )}
+                      {article.isFeatured && (
+                        <Star className="w-4 h-4 text-amber-500 fill-amber-500" />
+                      )}
+                      {!article.isPublished && (
+                        <span className="px-2 py-0.5 text-xs rounded-full bg-slate-100 text-slate-500">Brouillon</span>
+                      )}
+                    </div>
+
+                    <h3 className="font-semibold text-slate-800 mb-2 line-clamp-2 group-hover:text-primary-600 transition-colors cursor-pointer"
+                        onClick={() => handleViewArticle(article)}>
+                      {article.title}
+                    </h3>
+
+                    {article.excerpt && (
+                      <p className="text-sm text-slate-500 mb-4 line-clamp-2">{article.excerpt}</p>
+                    )}
+
+                    <div className="flex items-center justify-between text-xs text-slate-400">
+                      <div className="flex items-center gap-3">
+                        <span className="flex items-center gap-1"><Eye className="w-3 h-3" /> {article.viewCount}</span>
+                        <span className="flex items-center gap-1"><Heart className="w-3 h-3" /> {article.likeCount}</span>
+                        <span className="flex items-center gap-1"><MessageSquare className="w-3 h-3" /> {article.commentCount}</span>
+                      </div>
+                      <span>{formatDate(article.createdAt)}</span>
+                    </div>
+                  </div>
+
+                  <div className="px-5 py-3 bg-slate-50 border-t border-slate-100 flex items-center justify-between">
+                    <span className="text-xs text-slate-500">{article.authorName || 'Anonyme'}</span>
+                    <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <button onClick={() => handleViewArticle(article)} className="p-1.5 text-slate-400 hover:text-primary-600 hover:bg-primary-50 rounded-lg">
+                        <Eye className="w-4 h-4" />
+                      </button>
+                      <button onClick={() => handleEditArticle(article)} className="p-1.5 text-slate-400 hover:text-primary-600 hover:bg-primary-50 rounded-lg">
+                        <Edit3 className="w-4 h-4" />
+                      </button>
+                      <button onClick={() => { setDeletingArticle(article); setShowDeleteModal(true) }} className="p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg">
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Pagination */}
+          {totalArticles > 0 && (
+            <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-4">
+              <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+                <div className="flex items-center gap-4">
+                  <div className="text-sm text-slate-500">
+                    <span className="font-semibold text-slate-700">{totalArticles}</span> article(s)
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm text-slate-500">Afficher</span>
+                    <select
+                      value={itemsPerPage}
+                      onChange={(e) => { setItemsPerPage(Number(e.target.value)); setCurrentPageNum(1); }}
+                      className="px-2 py-1 border border-slate-300 rounded-lg text-sm"
+                    >
+                      <option value={6}>6</option>
+                      <option value={12}>12</option>
+                      <option value={24}>24</option>
+                      <option value={48}>48</option>
+                    </select>
+                  </div>
+                </div>
+
+                {totalPages > 1 && (
+                  <div className="flex items-center gap-1">
+                    <button onClick={() => setCurrentPageNum(1)} disabled={currentPageNum === 1}
+                      className="p-2 rounded-lg text-slate-500 hover:text-primary-600 hover:bg-primary-50 disabled:opacity-40 disabled:cursor-not-allowed">
+                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M11 19l-7-7 7-7m8 14l-7-7 7-7" />
+                      </svg>
+                    </button>
+                    <button onClick={() => setCurrentPageNum(p => Math.max(1, p - 1))} disabled={currentPageNum === 1}
+                      className="p-2 rounded-lg text-slate-500 hover:text-primary-600 hover:bg-primary-50 disabled:opacity-40 disabled:cursor-not-allowed">
+                      <ChevronLeft className="w-4 h-4" />
+                    </button>
+                    <span className="px-3 py-1 text-sm text-slate-600">
+                      Page {currentPageNum} / {totalPages}
+                    </span>
+                    <button onClick={() => setCurrentPageNum(p => Math.min(totalPages, p + 1))} disabled={currentPageNum === totalPages}
+                      className="p-2 rounded-lg text-slate-500 hover:text-primary-600 hover:bg-primary-50 disabled:opacity-40 disabled:cursor-not-allowed">
+                      <ChevronRight className="w-4 h-4" />
+                    </button>
+                    <button onClick={() => setCurrentPageNum(totalPages)} disabled={currentPageNum === totalPages}
+                      className="p-2 rounded-lg text-slate-500 hover:text-primary-600 hover:bg-primary-50 disabled:opacity-40 disabled:cursor-not-allowed">
+                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M13 5l7 7-7 7M5 5l7 7-7 7" />
+                      </svg>
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Delete Modal */}
+      {showDeleteModal && deletingArticle && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-6 text-center">
+            <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
+              <AlertTriangle className="w-8 h-8 text-red-600" />
+            </div>
+            <h3 className="text-lg font-semibold text-slate-800 mb-2">Supprimer l'article</h3>
+            <p className="text-slate-500 mb-6">Supprimer "{deletingArticle.title}" ? Cette action est irréversible.</p>
+            <div className="flex gap-3 justify-center">
+              <button onClick={() => setShowDeleteModal(false)} className="px-4 py-2 border border-slate-300 text-slate-700 rounded-xl hover:bg-slate-50">
+                Annuler
+              </button>
+              <button onClick={handleDeleteArticle} className="px-4 py-2 bg-red-600 text-white rounded-xl hover:bg-red-700">
+                Supprimer
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+/* ============================================
    PLACEHOLDER PAGE
    ============================================ */
 function PlaceholderPage({ title }: { title: string }) {
@@ -7126,6 +9852,3593 @@ function PlaceholderPage({ title }: { title: string }) {
       </div>
       <h2 className="text-2xl font-display font-bold text-slate-800 mb-2">{title}</h2>
       <p className="text-slate-500">{t('placeholder.message')}</p>
+    </div>
+  )
+}
+
+/* ============================================
+   WORK SCHEDULES PAGE
+   ============================================ */
+interface WorkScheduleData {
+  id: string
+  code: string
+  name: string
+  description?: string
+  timezoneId: string
+  startDate?: string
+  endDate?: string
+  isDefault: boolean
+  isActive: boolean
+  days: WorkScheduleDayData[]
+}
+
+interface WorkScheduleDayData {
+  id?: string
+  workScheduleId?: string
+  dayOfWeek: 0 | 1 | 2 | 3 | 4 | 5 | 6
+  startTime: string
+  endTime: string
+  breakStartTime?: string
+  breakEndTime?: string
+  breakDurationMinutes?: number
+  isWorkingDay: boolean
+}
+
+interface TimezoneData {
+  id: string
+  name: string
+  offset: string
+}
+
+const DAYS_OF_WEEK_CONFIG = [
+  { value: 1 as const, label: 'Lundi', short: 'Lun' },
+  { value: 2 as const, label: 'Mardi', short: 'Mar' },
+  { value: 3 as const, label: 'Mercredi', short: 'Mer' },
+  { value: 4 as const, label: 'Jeudi', short: 'Jeu' },
+  { value: 5 as const, label: 'Vendredi', short: 'Ven' },
+  { value: 6 as const, label: 'Samedi', short: 'Sam' },
+  { value: 0 as const, label: 'Dimanche', short: 'Dim' },
+]
+
+function WorkSchedulesPage() {
+  const { t } = useTranslation()
+  const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
+
+  // View state
+  const [currentView, setCurrentView] = useState<'list' | 'form'>('list')
+  const [schedules, setSchedules] = useState<WorkScheduleData[]>([])
+  const [timezones, setTimezones] = useState<TimezoneData[]>([])
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+  const [searchTerm, setSearchTerm] = useState('')
+
+  // Edit state
+  const [editingSchedule, setEditingSchedule] = useState<WorkScheduleData | null>(null)
+  const [showDeleteModal, setShowDeleteModal] = useState(false)
+  const [deletingSchedule, setDeletingSchedule] = useState<WorkScheduleData | null>(null)
+
+  // Form state
+  const [formData, setFormData] = useState({
+    code: '',
+    name: '',
+    description: '',
+    timezoneId: '',
+    startDate: '',
+    endDate: '',
+    isDefault: false,
+    isActive: true,
+    enableNotifications: true,
+    allowOvertime: false,
+    flexibleHours: true,
+    allowRemoteWork: true,
+    requireClockIn: true,
+    respectHolidays: true,
+    days: DAYS_OF_WEEK_CONFIG.map(day => ({
+      dayOfWeek: day.value,
+      startTime: '08:00',
+      endTime: '17:00',
+      breakStartTime: '12:00',
+      breakEndTime: '13:00',
+      breakDurationMinutes: 60,
+      isWorkingDay: day.value !== 0 && day.value !== 6, // Weekend off by default
+    }))
+  })
+
+  const getHeaders = () => {
+    const authData = localStorage.getItem('auth_token')
+    const token = authData ? JSON.parse(authData).token : null
+    return { 'Content-Type': 'application/json', ...(token && { 'Authorization': `Bearer ${token}` }) }
+  }
+
+  const loadSchedules = async () => {
+    try {
+      setLoading(true)
+      const response = await fetch(`${API_URL}/api/config/work-schedules`, { headers: getHeaders() })
+      if (response.ok) {
+        const data = await response.json()
+        const rawSchedules = data.data || data || []
+        const transformed = rawSchedules.map((s: any) => ({
+          id: s.id,
+          code: s.code,
+          name: s.name,
+          description: s.description,
+          timezoneId: s.timezone_id || s.timezoneId,
+          startDate: s.start_date || s.startDate,
+          endDate: s.end_date || s.endDate,
+          isDefault: s.is_default ?? s.isDefault ?? false,
+          isActive: s.is_active ?? s.isActive ?? true,
+          days: (s.days || []).map((d: any) => ({
+            id: d.id,
+            workScheduleId: d.work_schedule_id || d.workScheduleId,
+            dayOfWeek: d.day_of_week ?? d.dayOfWeek,
+            startTime: d.start_time || d.startTime || '08:00',
+            endTime: d.end_time || d.endTime || '17:00',
+            breakStartTime: d.break_start_time || d.breakStartTime,
+            breakEndTime: d.break_end_time || d.breakEndTime,
+            breakDurationMinutes: d.break_duration_minutes ?? d.breakDurationMinutes ?? 60,
+            isWorkingDay: d.is_working_day ?? d.isWorkingDay ?? true,
+          }))
+        }))
+        setSchedules(transformed)
+      }
+    } catch (error) {
+      console.error('Error loading schedules:', error)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const loadTimezones = async () => {
+    try {
+      const response = await fetch(`${API_URL}/api/config/timezones`, { headers: getHeaders() })
+      if (response.ok) {
+        const data = await response.json()
+        setTimezones(data.data || data || [])
+      }
+    } catch (error) {
+      console.error('Error loading timezones:', error)
+    }
+  }
+
+  useEffect(() => {
+    loadSchedules()
+    loadTimezones()
+  }, [])
+
+  const filteredSchedules = schedules.filter(s => {
+    if (searchTerm) {
+      const search = searchTerm.toLowerCase()
+      return s.name.toLowerCase().includes(search) || s.code.toLowerCase().includes(search)
+    }
+    return true
+  })
+
+  const handleCreate = () => {
+    setEditingSchedule(null)
+    setFormData({
+      code: '',
+      name: '',
+      description: '',
+      timezoneId: timezones[0]?.id || '',
+      startDate: '',
+      endDate: '',
+      isDefault: false,
+      isActive: true,
+      enableNotifications: true,
+      allowOvertime: false,
+      flexibleHours: true,
+      allowRemoteWork: true,
+      requireClockIn: true,
+      respectHolidays: true,
+      days: DAYS_OF_WEEK_CONFIG.map(day => ({
+        dayOfWeek: day.value,
+        startTime: '08:00',
+        endTime: '17:00',
+        breakStartTime: '12:00',
+        breakEndTime: '13:00',
+        breakDurationMinutes: 60,
+        isWorkingDay: day.value !== 0 && day.value !== 6,
+      }))
+    })
+    setCurrentView('form')
+  }
+
+  const handleEdit = (schedule: WorkScheduleData) => {
+    setEditingSchedule(schedule)
+    setFormData({
+      code: schedule.code,
+      name: schedule.name,
+      description: schedule.description || '',
+      timezoneId: schedule.timezoneId || timezones[0]?.id || '',
+      startDate: schedule.startDate || '',
+      endDate: schedule.endDate || '',
+      isDefault: schedule.isDefault,
+      isActive: schedule.isActive,
+      enableNotifications: true,
+      allowOvertime: false,
+      flexibleHours: true,
+      allowRemoteWork: true,
+      requireClockIn: true,
+      respectHolidays: true,
+      days: DAYS_OF_WEEK_CONFIG.map(day => {
+        const existingDay = schedule.days?.find(d => d.dayOfWeek === day.value)
+        return existingDay || {
+          dayOfWeek: day.value,
+          startTime: '08:00',
+          endTime: '17:00',
+          breakStartTime: '12:00',
+          breakEndTime: '13:00',
+          breakDurationMinutes: 60,
+          isWorkingDay: false,
+        }
+      })
+    })
+    setCurrentView('form')
+  }
+
+  const handleDuplicate = (schedule: WorkScheduleData) => {
+    setEditingSchedule(null)
+    setFormData({
+      code: `${schedule.code}_COPY`,
+      name: `${schedule.name} (copie)`,
+      description: schedule.description || '',
+      timezoneId: schedule.timezoneId || timezones[0]?.id || '',
+      startDate: '',
+      endDate: '',
+      isDefault: false,
+      isActive: true,
+      enableNotifications: true,
+      allowOvertime: false,
+      flexibleHours: true,
+      allowRemoteWork: true,
+      requireClockIn: true,
+      respectHolidays: true,
+      days: DAYS_OF_WEEK_CONFIG.map(day => {
+        const existingDay = schedule.days?.find(d => d.dayOfWeek === day.value)
+        return existingDay ? { ...existingDay, id: undefined, workScheduleId: undefined } : {
+          dayOfWeek: day.value,
+          startTime: '08:00',
+          endTime: '17:00',
+          breakStartTime: '12:00',
+          breakEndTime: '13:00',
+          breakDurationMinutes: 60,
+          isWorkingDay: false,
+        }
+      })
+    })
+    setCurrentView('form')
+  }
+
+  const handleBack = () => {
+    setCurrentView('list')
+    setEditingSchedule(null)
+  }
+
+  const handleDayChange = (dayIndex: number, field: string, value: any) => {
+    setFormData(prev => ({
+      ...prev,
+      days: prev.days.map((day, i) => i === dayIndex ? { ...day, [field]: value } : day)
+    }))
+  }
+
+  const handleSave = async () => {
+    // Validation améliorée
+    if (!formData.code || !formData.name) {
+      console.error('Validation échouée: code ou nom manquant')
+      alert('Veuillez remplir le code et le nom du planning')
+      return
+    }
+    if (!formData.timezoneId) {
+      console.error('Validation échouée: timezoneId manquant')
+      alert('Veuillez sélectionner un fuseau horaire')
+      return
+    }
+    try {
+      setSaving(true)
+      const payload = {
+        code: formData.code,
+        name: formData.name,
+        description: formData.description || null,
+        timezoneId: formData.timezoneId,
+        startDate: formData.startDate || null,
+        endDate: formData.endDate || null,
+        isDefault: formData.isDefault,
+        isActive: formData.isActive,
+        days: formData.days.map(d => ({
+          dayOfWeek: d.dayOfWeek,
+          startTime: d.startTime,
+          endTime: d.endTime,
+          breakStartTime: d.breakStartTime || null,
+          breakEndTime: d.breakEndTime || null,
+          breakDurationMinutes: d.breakDurationMinutes || 60,
+          isWorkingDay: d.isWorkingDay,
+        }))
+      }
+      const url = editingSchedule
+        ? `${API_URL}/api/config/work-schedules/${editingSchedule.id}`
+        : `${API_URL}/api/config/work-schedules`
+      const headers = getHeaders()
+      console.log('=== SAVE WORK SCHEDULE ===')
+      console.log('URL:', url)
+      console.log('Method:', editingSchedule ? 'PUT' : 'POST')
+      console.log('Headers:', headers)
+      console.log('Payload:', JSON.stringify(payload, null, 2))
+      const response = await fetch(url, {
+        method: editingSchedule ? 'PUT' : 'POST',
+        headers: headers,
+        body: JSON.stringify(payload)
+      })
+      console.log('Response status:', response.status)
+      if (response.ok) {
+        console.log('Save successful!')
+        loadSchedules()
+        setCurrentView('list')
+      } else {
+        const errorData = await response.json()
+        console.error('Error saving:', errorData)
+        alert(`Erreur: ${errorData.message || 'Erreur lors de la sauvegarde'}`)
+      }
+    } catch (error) {
+      console.error('Error saving schedule:', error)
+      alert('Erreur réseau lors de la sauvegarde')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const handleDelete = async () => {
+    if (!deletingSchedule) return
+    try {
+      const response = await fetch(`${API_URL}/api/config/work-schedules/${deletingSchedule.id}`, {
+        method: 'DELETE',
+        headers: getHeaders()
+      })
+      if (response.ok) {
+        loadSchedules()
+        setShowDeleteModal(false)
+        setDeletingSchedule(null)
+      }
+    } catch (error) {
+      console.error('Error deleting schedule:', error)
+    }
+  }
+
+  const getWorkingDaysCount = (schedule: WorkScheduleData) => schedule.days?.filter(d => d.isWorkingDay).length || 0
+
+  const getTypicalHours = (schedule: WorkScheduleData) => {
+    const workingDay = schedule.days?.find(d => d.isWorkingDay)
+    if (!workingDay) return 'Non défini'
+    return `${workingDay.startTime} - ${workingDay.endTime}`
+  }
+
+  // List View
+  if (currentView === 'list') {
+    return (
+      <div className="p-6">
+        {/* Header */}
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
+          <div>
+            <h1 className="text-2xl font-display font-bold text-slate-800">Horaires de travail</h1>
+            <p className="text-slate-500 mt-1">Configurez les plannings de travail de votre organisation</p>
+          </div>
+          <button
+            onClick={handleCreate}
+            className="flex items-center gap-2 px-4 py-2.5 bg-emerald-500 text-white rounded-xl hover:bg-emerald-600 transition-colors font-medium"
+          >
+            <Plus className="w-5 h-5" />
+            Nouveau planning
+          </button>
+        </div>
+
+        {/* Search */}
+        <div className="mb-6">
+          <div className="relative max-w-md">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
+            <input
+              type="text"
+              placeholder="Rechercher un planning..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="w-full pl-10 pr-4 py-2.5 border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none"
+            />
+          </div>
+        </div>
+
+        {/* Grid */}
+        {loading ? (
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {[1, 2, 3, 4].map(i => (
+              <div key={i} className="h-72 bg-slate-100 rounded-2xl animate-pulse" />
+            ))}
+          </div>
+        ) : filteredSchedules.length === 0 ? (
+          <div className="text-center py-16">
+            <Clock className="w-16 h-16 text-slate-300 mx-auto mb-4" />
+            <h3 className="text-lg font-medium text-slate-700 mb-2">Aucun planning trouvé</h3>
+            <p className="text-slate-500 mb-6">Créez votre premier planning de travail</p>
+            <button
+              onClick={handleCreate}
+              className="px-4 py-2 bg-emerald-500 text-white rounded-lg hover:bg-emerald-600 transition-colors"
+            >
+              Créer un planning
+            </button>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {filteredSchedules.map(schedule => (
+              <div key={schedule.id} className="group bg-white rounded-2xl border border-slate-200 overflow-hidden hover:shadow-lg transition-all">
+                {/* Card Header */}
+                <div className="p-5 border-b border-slate-100">
+                  <div className="flex items-start justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className="p-2.5 rounded-xl bg-emerald-100 text-emerald-600">
+                        <Clock className="w-5 h-5" />
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <h3 className="font-semibold text-slate-800">{schedule.name}</h3>
+                          {schedule.isDefault && (
+                            <span className="px-2 py-0.5 text-xs font-medium bg-amber-100 text-amber-700 rounded-full flex items-center gap-1">
+                              <Star className="w-3 h-3" />
+                              Par défaut
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-xs text-slate-500 font-mono">{schedule.code}</p>
+                      </div>
+                    </div>
+                    <span className={`px-2.5 py-1 text-xs font-medium rounded-full ${schedule.isActive ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-500'}`}>
+                      {schedule.isActive ? 'Actif' : 'Inactif'}
+                    </span>
+                  </div>
+                  {schedule.description && (
+                    <p className="mt-3 text-sm text-slate-500">{schedule.description}</p>
+                  )}
+                </div>
+
+                {/* Schedule Preview */}
+                <div className="p-5">
+                  <div className="flex items-center gap-6 mb-4 text-sm">
+                    <div className="flex items-center gap-2">
+                      <Calendar className="w-4 h-4 text-amber-500" />
+                      <span className="text-slate-600">{getWorkingDaysCount(schedule)} jours/sem</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Clock className="w-4 h-4 text-emerald-500" />
+                      <span className="text-slate-600">{getTypicalHours(schedule)}</span>
+                    </div>
+                  </div>
+
+                  {/* Days Preview */}
+                  <div className="space-y-2">
+                    {DAYS_OF_WEEK_CONFIG.slice(0, 5).map(day => {
+                      const scheduleDay = schedule.days?.find(d => d.dayOfWeek === day.value)
+                      const isWorking = scheduleDay?.isWorkingDay ?? false
+                      return (
+                        <div key={day.value} className="flex items-center gap-3">
+                          <span className="w-8 text-xs font-medium text-slate-500">{day.short}</span>
+                          <div className="flex-1 h-6 bg-slate-100 rounded relative overflow-hidden">
+                            {isWorking && scheduleDay && (
+                              <div
+                                className="absolute top-1 bottom-1 rounded bg-gradient-to-r from-emerald-500 to-emerald-400"
+                                style={{
+                                  left: `${(parseInt(scheduleDay.startTime.split(':')[0]) / 24) * 100}%`,
+                                  width: `${((parseInt(scheduleDay.endTime.split(':')[0]) - parseInt(scheduleDay.startTime.split(':')[0])) / 24) * 100}%`
+                                }}
+                              />
+                            )}
+                            {!isWorking && (
+                              <div className="absolute inset-0 flex items-center justify-center">
+                                <span className="text-[10px] text-slate-400">Repos</span>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+
+                {/* Actions */}
+                <div className="flex items-center justify-between px-5 py-3 border-t border-slate-100 bg-slate-50/50">
+                  <div className="text-xs text-slate-500">
+                    {schedule.startDate ? `${new Date(schedule.startDate).toLocaleDateString('fr-FR')}` : 'Permanent'}
+                  </div>
+                  <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <button
+                      onClick={() => handleDuplicate(schedule)}
+                      className="p-2 text-slate-500 hover:bg-slate-200 rounded-lg transition-colors"
+                      title="Dupliquer"
+                    >
+                      <Copy className="w-4 h-4" />
+                    </button>
+                    <button
+                      onClick={() => handleEdit(schedule)}
+                      className="p-2 text-slate-500 hover:bg-slate-200 rounded-lg transition-colors"
+                      title="Modifier"
+                    >
+                      <Edit3 className="w-4 h-4" />
+                    </button>
+                    <button
+                      onClick={() => { setDeletingSchedule(schedule); setShowDeleteModal(true) }}
+                      className="p-2 text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                      title="Supprimer"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Delete Modal */}
+        {showDeleteModal && deletingSchedule && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-2xl max-w-md w-full p-6">
+              <h3 className="text-lg font-semibold text-slate-800 mb-2">Supprimer le planning</h3>
+              <p className="text-slate-600 mb-6">
+                Êtes-vous sûr de vouloir supprimer le planning "{deletingSchedule.name}" ? Cette action est irréversible.
+              </p>
+              <div className="flex justify-end gap-3">
+                <button
+                  onClick={() => { setShowDeleteModal(false); setDeletingSchedule(null) }}
+                  className="px-4 py-2 text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
+                >
+                  Annuler
+                </button>
+                <button
+                  onClick={handleDelete}
+                  className="px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors"
+                >
+                  Supprimer
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    )
+  }
+
+  // Form View
+  return (
+    <div className="p-6">
+      {/* Header */}
+      <div className="flex items-center justify-between mb-6">
+        <div className="flex items-center gap-4">
+          <button
+            onClick={handleBack}
+            className="p-2 hover:bg-slate-100 rounded-lg transition-colors"
+          >
+            <ArrowLeft className="w-5 h-5 text-slate-600" />
+          </button>
+          <div>
+            <h1 className="text-2xl font-display font-bold text-slate-800">
+              {editingSchedule ? 'Modifier le planning' : 'Nouveau planning de travail'}
+            </h1>
+            <p className="text-slate-500 mt-1">
+              {editingSchedule ? 'Modifiez les informations du planning' : 'Configurez un nouveau planning de travail'}
+            </p>
+          </div>
+        </div>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={handleBack}
+            className="px-4 py-2.5 text-slate-600 hover:bg-slate-100 rounded-xl transition-colors"
+          >
+            Annuler
+          </button>
+          <button
+            onClick={handleSave}
+            disabled={saving || !formData.code || !formData.name}
+            className="flex items-center gap-2 px-6 py-2.5 bg-emerald-500 text-white rounded-xl hover:bg-emerald-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {saving && <RefreshCw className="w-4 h-4 animate-spin" />}
+            {editingSchedule ? 'Enregistrer' : 'Créer le planning'}
+          </button>
+        </div>
+      </div>
+
+      {/* Form - Full Width Two Column Layout */}
+      <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
+        {/* Left Column - Basic Info & Options */}
+        <div className="xl:col-span-1 space-y-6">
+          {/* Basic Info Card */}
+          <div className="bg-white rounded-2xl border border-slate-200 p-6">
+            <div className="flex items-center gap-3 mb-5">
+              <div className="p-2 rounded-xl bg-emerald-100 text-emerald-600">
+                <Clock className="w-5 h-5" />
+              </div>
+              <h3 className="font-semibold text-slate-800">Informations générales</h3>
+            </div>
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1.5">Code *</label>
+                <input
+                  type="text"
+                  value={formData.code}
+                  onChange={(e) => setFormData({ ...formData, code: e.target.value.toUpperCase() })}
+                  placeholder="STANDARD_WEEK"
+                  className="w-full px-4 py-2.5 border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1.5">Nom *</label>
+                <input
+                  type="text"
+                  value={formData.name}
+                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                  placeholder="Semaine standard"
+                  className="w-full px-4 py-2.5 border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1.5">Description</label>
+                <textarea
+                  value={formData.description}
+                  onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                  placeholder="Description du planning..."
+                  rows={3}
+                  className="w-full px-4 py-2.5 border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none resize-none"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1.5">Fuseau horaire</label>
+                <select
+                  value={formData.timezoneId}
+                  onChange={(e) => setFormData({ ...formData, timezoneId: e.target.value })}
+                  className="w-full px-4 py-2.5 border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none"
+                >
+                  <option value="">Sélectionner...</option>
+                  {timezones.map(tz => (
+                    <option key={tz.id} value={tz.id}>{tz.name} ({tz.offset})</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          </div>
+
+          {/* Period Card */}
+          <div className="bg-white rounded-2xl border border-slate-200 p-6">
+            <div className="flex items-center gap-3 mb-5">
+              <div className="p-2 rounded-xl bg-blue-100 text-blue-600">
+                <Calendar className="w-5 h-5" />
+              </div>
+              <h3 className="font-semibold text-slate-800">Période de validité</h3>
+            </div>
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1.5">Date de début</label>
+                <input
+                  type="date"
+                  value={formData.startDate}
+                  onChange={(e) => setFormData({ ...formData, startDate: e.target.value })}
+                  className="w-full px-4 py-2.5 border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1.5">Date de fin</label>
+                <input
+                  type="date"
+                  value={formData.endDate}
+                  onChange={(e) => setFormData({ ...formData, endDate: e.target.value })}
+                  className="w-full px-4 py-2.5 border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none"
+                />
+              </div>
+              <p className="text-xs text-slate-500">Laissez vide pour un planning permanent</p>
+            </div>
+          </div>
+
+        </div>
+
+        {/* Right Column - Days Configuration */}
+        <div className="xl:col-span-2">
+          <div className="bg-white rounded-2xl border border-slate-200 p-6 h-full">
+            <div className="flex items-center justify-between mb-5">
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-xl bg-amber-100 text-amber-600">
+                  <Calendar className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-semibold text-slate-800">Configuration des jours</h3>
+                  <p className="text-sm text-slate-500">Définissez les horaires pour chaque jour de la semaine</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-4 text-sm">
+                <div className="flex items-center gap-2">
+                  <div className="w-3 h-3 rounded-full bg-emerald-500" />
+                  <span className="text-slate-600">Travail</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <div className="w-3 h-3 rounded-full bg-amber-400" />
+                  <span className="text-slate-600">Pause</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <div className="w-3 h-3 rounded-full bg-slate-300" />
+                  <span className="text-slate-600">Repos</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="space-y-3">
+              {DAYS_OF_WEEK_CONFIG.map((day, index) => {
+                const dayData = formData.days[index]
+                return (
+                  <div
+                    key={day.value}
+                    className={`p-4 rounded-xl border-2 transition-all ${
+                      dayData.isWorkingDay
+                        ? 'bg-emerald-50/50 border-emerald-200 hover:border-emerald-300'
+                        : 'bg-slate-50 border-slate-200 hover:border-slate-300'
+                    }`}
+                  >
+                    <div className="flex items-center gap-4">
+                      {/* Toggle */}
+                      <button
+                        type="button"
+                        onClick={() => handleDayChange(index, 'isWorkingDay', !dayData.isWorkingDay)}
+                        className={`relative w-14 h-8 rounded-full transition-colors flex-shrink-0 ${
+                          dayData.isWorkingDay ? 'bg-emerald-500' : 'bg-slate-300'
+                        }`}
+                      >
+                        <span
+                          className={`absolute top-1 w-6 h-6 bg-white rounded-full shadow transition-transform ${
+                            dayData.isWorkingDay ? 'left-7' : 'left-1'
+                          }`}
+                        />
+                      </button>
+
+                      {/* Day Name */}
+                      <div className="w-28 flex-shrink-0">
+                        <span className={`font-semibold ${dayData.isWorkingDay ? 'text-emerald-700' : 'text-slate-500'}`}>
+                          {day.label}
+                        </span>
+                      </div>
+
+                      {dayData.isWorkingDay ? (
+                        <div className="flex-1 grid grid-cols-2 lg:grid-cols-4 gap-3">
+                          <div>
+                            <label className="block text-xs font-medium text-slate-500 mb-1">Début travail</label>
+                            <input
+                              type="time"
+                              value={dayData.startTime}
+                              onChange={(e) => handleDayChange(index, 'startTime', e.target.value)}
+                              className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none bg-white"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-xs font-medium text-slate-500 mb-1">Fin travail</label>
+                            <input
+                              type="time"
+                              value={dayData.endTime}
+                              onChange={(e) => handleDayChange(index, 'endTime', e.target.value)}
+                              className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none bg-white"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-xs font-medium text-slate-500 mb-1">Début pause</label>
+                            <input
+                              type="time"
+                              value={dayData.breakStartTime || ''}
+                              onChange={(e) => handleDayChange(index, 'breakStartTime', e.target.value)}
+                              className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-amber-500 outline-none bg-white"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-xs font-medium text-slate-500 mb-1">Fin pause</label>
+                            <input
+                              type="time"
+                              value={dayData.breakEndTime || ''}
+                              onChange={(e) => handleDayChange(index, 'breakEndTime', e.target.value)}
+                              className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-amber-500 outline-none bg-white"
+                            />
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="flex-1 flex items-center">
+                          <span className="text-slate-400 italic">Jour de repos</span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+
+            {/* Summary */}
+            <div className="mt-6 p-4 rounded-xl bg-slate-50 border border-slate-200">
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-slate-600">Résumé du planning</span>
+                <div className="flex items-center gap-4">
+                  <span className="font-medium text-slate-800">
+                    {formData.days.filter(d => d.isWorkingDay).length} jours travaillés
+                  </span>
+                  <span className="text-slate-400">|</span>
+                  <span className="font-medium text-slate-800">
+                    {formData.days.filter(d => !d.isWorkingDay).length} jours de repos
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Options Section - Full Width at Bottom */}
+      <div className="mt-6 bg-white rounded-2xl border border-slate-200 p-6">
+        <div className="flex items-center gap-3 mb-6">
+          <div className="p-2.5 rounded-xl bg-purple-100 text-purple-600">
+            <Settings className="w-5 h-5" />
+          </div>
+          <div>
+            <h3 className="font-semibold text-slate-800">Options et paramètres avancés</h3>
+            <p className="text-sm text-slate-500">Configurez les comportements et préférences du planning</p>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
+          {/* Option 1: Planning par défaut */}
+          <div className="flex items-center justify-between p-5 rounded-xl bg-gradient-to-br from-amber-50 to-orange-50 border border-amber-200">
+            <div className="flex items-center gap-3">
+              <div className="p-2 rounded-lg bg-amber-100 text-amber-600">
+                <Star className="w-5 h-5" />
+              </div>
+              <div>
+                <p className="font-medium text-slate-800">Planning par défaut</p>
+                <p className="text-xs text-slate-500">Assigné aux nouveaux utilisateurs</p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => setFormData({ ...formData, isDefault: !formData.isDefault })}
+              className={`relative w-14 h-8 rounded-full transition-colors flex-shrink-0 ${
+                formData.isDefault ? 'bg-amber-500' : 'bg-slate-300'
+              }`}
+            >
+              <span
+                className={`absolute top-1 w-6 h-6 bg-white rounded-full shadow transition-transform ${
+                  formData.isDefault ? 'left-7' : 'left-1'
+                }`}
+              />
+            </button>
+          </div>
+
+          {/* Option 2: Planning actif */}
+          <div className="flex items-center justify-between p-5 rounded-xl bg-gradient-to-br from-emerald-50 to-green-50 border border-emerald-200">
+            <div className="flex items-center gap-3">
+              <div className="p-2 rounded-lg bg-emerald-100 text-emerald-600">
+                <Check className="w-5 h-5" />
+              </div>
+              <div>
+                <p className="font-medium text-slate-800">Planning actif</p>
+                <p className="text-xs text-slate-500">Disponible pour assignation</p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => setFormData({ ...formData, isActive: !formData.isActive })}
+              className={`relative w-14 h-8 rounded-full transition-colors flex-shrink-0 ${
+                formData.isActive ? 'bg-emerald-500' : 'bg-slate-300'
+              }`}
+            >
+              <span
+                className={`absolute top-1 w-6 h-6 bg-white rounded-full shadow transition-transform ${
+                  formData.isActive ? 'left-7' : 'left-1'
+                }`}
+              />
+            </button>
+          </div>
+
+          {/* Option 3: Notifications */}
+          <div className="flex items-center justify-between p-5 rounded-xl bg-gradient-to-br from-blue-50 to-indigo-50 border border-blue-200">
+            <div className="flex items-center gap-3">
+              <div className="p-2 rounded-lg bg-blue-100 text-blue-600">
+                <Bell className="w-5 h-5" />
+              </div>
+              <div>
+                <p className="font-medium text-slate-800">Notifications</p>
+                <p className="text-xs text-slate-500">Alerter les changements d'horaire</p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => setFormData({ ...formData, enableNotifications: !formData.enableNotifications })}
+              className={`relative w-14 h-8 rounded-full transition-colors flex-shrink-0 ${
+                formData.enableNotifications ? 'bg-blue-500' : 'bg-slate-300'
+              }`}
+            >
+              <span
+                className={`absolute top-1 w-6 h-6 bg-white rounded-full shadow transition-transform ${
+                  formData.enableNotifications ? 'left-7' : 'left-1'
+                }`}
+              />
+            </button>
+          </div>
+
+          {/* Option 4: Heures supplémentaires */}
+          <div className="flex items-center justify-between p-5 rounded-xl bg-gradient-to-br from-purple-50 to-pink-50 border border-purple-200">
+            <div className="flex items-center gap-3">
+              <div className="p-2 rounded-lg bg-purple-100 text-purple-600">
+                <Clock className="w-5 h-5" />
+              </div>
+              <div>
+                <p className="font-medium text-slate-800">Heures supp.</p>
+                <p className="text-xs text-slate-500">Autoriser le dépassement</p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => setFormData({ ...formData, allowOvertime: !formData.allowOvertime })}
+              className={`relative w-14 h-8 rounded-full transition-colors flex-shrink-0 ${
+                formData.allowOvertime ? 'bg-purple-500' : 'bg-slate-300'
+              }`}
+            >
+              <span
+                className={`absolute top-1 w-6 h-6 bg-white rounded-full shadow transition-transform ${
+                  formData.allowOvertime ? 'left-7' : 'left-1'
+                }`}
+              />
+            </button>
+          </div>
+
+          {/* Option 5: Flexibilité horaire */}
+          <div className="flex items-center justify-between p-5 rounded-xl bg-gradient-to-br from-cyan-50 to-teal-50 border border-cyan-200">
+            <div className="flex items-center gap-3">
+              <div className="p-2 rounded-lg bg-cyan-100 text-cyan-600">
+                <RefreshCw className="w-5 h-5" />
+              </div>
+              <div>
+                <p className="font-medium text-slate-800">Horaires flexibles</p>
+                <p className="text-xs text-slate-500">Tolérance de +/- 30 min</p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => setFormData({ ...formData, flexibleHours: !formData.flexibleHours })}
+              className={`relative w-14 h-8 rounded-full transition-colors flex-shrink-0 ${
+                formData.flexibleHours ? 'bg-cyan-500' : 'bg-slate-300'
+              }`}
+            >
+              <span
+                className={`absolute top-1 w-6 h-6 bg-white rounded-full shadow transition-transform ${
+                  formData.flexibleHours ? 'left-7' : 'left-1'
+                }`}
+              />
+            </button>
+          </div>
+
+          {/* Option 6: Télétravail */}
+          <div className="flex items-center justify-between p-5 rounded-xl bg-gradient-to-br from-rose-50 to-red-50 border border-rose-200">
+            <div className="flex items-center gap-3">
+              <div className="p-2 rounded-lg bg-rose-100 text-rose-600">
+                <Home className="w-5 h-5" />
+              </div>
+              <div>
+                <p className="font-medium text-slate-800">Télétravail</p>
+                <p className="text-xs text-slate-500">Autoriser le travail à distance</p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => setFormData({ ...formData, allowRemoteWork: !formData.allowRemoteWork })}
+              className={`relative w-14 h-8 rounded-full transition-colors flex-shrink-0 ${
+                formData.allowRemoteWork ? 'bg-rose-500' : 'bg-slate-300'
+              }`}
+            >
+              <span
+                className={`absolute top-1 w-6 h-6 bg-white rounded-full shadow transition-transform ${
+                  formData.allowRemoteWork ? 'left-7' : 'left-1'
+                }`}
+              />
+            </button>
+          </div>
+
+          {/* Option 7: Pointage obligatoire */}
+          <div className="flex items-center justify-between p-5 rounded-xl bg-gradient-to-br from-slate-50 to-gray-100 border border-slate-200">
+            <div className="flex items-center gap-3">
+              <div className="p-2 rounded-lg bg-slate-200 text-slate-600">
+                <Fingerprint className="w-5 h-5" />
+              </div>
+              <div>
+                <p className="font-medium text-slate-800">Pointage requis</p>
+                <p className="text-xs text-slate-500">Validation obligatoire</p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => setFormData({ ...formData, requireClockIn: !formData.requireClockIn })}
+              className={`relative w-14 h-8 rounded-full transition-colors flex-shrink-0 ${
+                formData.requireClockIn ? 'bg-slate-500' : 'bg-slate-300'
+              }`}
+            >
+              <span
+                className={`absolute top-1 w-6 h-6 bg-white rounded-full shadow transition-transform ${
+                  formData.requireClockIn ? 'left-7' : 'left-1'
+                }`}
+              />
+            </button>
+          </div>
+
+          {/* Option 8: Jours fériés */}
+          <div className="flex items-center justify-between p-5 rounded-xl bg-gradient-to-br from-yellow-50 to-lime-50 border border-yellow-200">
+            <div className="flex items-center gap-3">
+              <div className="p-2 rounded-lg bg-yellow-100 text-yellow-600">
+                <Calendar className="w-5 h-5" />
+              </div>
+              <div>
+                <p className="font-medium text-slate-800">Jours fériés</p>
+                <p className="text-xs text-slate-500">Respecter les jours fériés</p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => setFormData({ ...formData, respectHolidays: !formData.respectHolidays })}
+              className={`relative w-14 h-8 rounded-full transition-colors flex-shrink-0 ${
+                formData.respectHolidays ? 'bg-yellow-500' : 'bg-slate-300'
+              }`}
+            >
+              <span
+                className={`absolute top-1 w-6 h-6 bg-white rounded-full shadow transition-transform ${
+                  formData.respectHolidays ? 'left-7' : 'left-1'
+                }`}
+              />
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+/* ============================================
+   SYSTEM CONFIG PAGE
+   ============================================ */
+
+interface SystemConfigData {
+  id: string
+  key: string
+  value: string
+  valueType: 'STRING' | 'INTEGER' | 'BOOLEAN' | 'DATE'
+  category: string
+  description: string
+  isEditable: boolean
+  updatedAt?: string
+}
+
+const CATEGORY_CONFIG: Record<string, { label: string; icon: any; color: string; bgColor: string }> = {
+  GENERAL: { label: 'Général', icon: Settings, color: 'text-blue-600', bgColor: 'bg-blue-100' },
+  FILES: { label: 'Fichiers', icon: FileText, color: 'text-purple-600', bgColor: 'bg-purple-100' },
+  NOTIFICATIONS: { label: 'Notifications', icon: Bell, color: 'text-amber-600', bgColor: 'bg-amber-100' },
+  WORKFLOW: { label: 'Flux de travail', icon: RefreshCw, color: 'text-emerald-600', bgColor: 'bg-emerald-100' },
+  DISPLAY: { label: 'Affichage', icon: Eye, color: 'text-cyan-600', bgColor: 'bg-cyan-100' },
+}
+
+function SystemConfigPage() {
+  const { t } = useTranslation()
+  const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
+
+  const [settings, setSettings] = useState<SystemConfigData[]>([])
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState<string | null>(null)
+  const [editingKey, setEditingKey] = useState<string | null>(null)
+  const [editValue, setEditValue] = useState<string>('')
+  const [searchTerm, setSearchTerm] = useState('')
+  const [selectedCategory, setSelectedCategory] = useState<string | null>(null)
+
+  const getHeaders = () => {
+    const authData = localStorage.getItem('auth_token')
+    const token = authData ? JSON.parse(authData).token : null
+    return { 'Content-Type': 'application/json', ...(token && { 'Authorization': `Bearer ${token}` }) }
+  }
+
+  const loadSettings = async () => {
+    try {
+      setLoading(true)
+      const response = await fetch(`${API_URL}/api/config/settings`, { headers: getHeaders() })
+      if (response.ok) {
+        const data = await response.json()
+        setSettings(data.data || [])
+      }
+    } catch (error) {
+      console.error('Error loading settings:', error)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    loadSettings()
+  }, [])
+
+  const handleEdit = (setting: SystemConfigData) => {
+    if (!setting.isEditable) return
+    setEditingKey(setting.key)
+    setEditValue(setting.value || '')
+  }
+
+  const handleCancel = () => {
+    setEditingKey(null)
+    setEditValue('')
+  }
+
+  const handleSave = async (key: string) => {
+    try {
+      setSaving(key)
+      const response = await fetch(`${API_URL}/api/config/settings/${key}`, {
+        method: 'PUT',
+        headers: getHeaders(),
+        body: JSON.stringify({ value: editValue })
+      })
+      if (response.ok) {
+        loadSettings()
+        setEditingKey(null)
+        setEditValue('')
+      } else {
+        const errorData = await response.json()
+        alert(`Erreur: ${errorData.message || 'Erreur lors de la sauvegarde'}`)
+      }
+    } catch (error) {
+      console.error('Error saving setting:', error)
+      alert('Erreur réseau lors de la sauvegarde')
+    } finally {
+      setSaving(null)
+    }
+  }
+
+  const formatValue = (setting: SystemConfigData): string => {
+    switch (setting.valueType) {
+      case 'BOOLEAN':
+        return setting.value === 'true' ? 'Oui' : 'Non'
+      case 'DATE':
+        return setting.value ? new Date(setting.value).toLocaleDateString('fr-FR') : '-'
+      case 'INTEGER':
+        return setting.value || '0'
+      default:
+        return setting.value || '-'
+    }
+  }
+
+  const renderEditInput = (setting: SystemConfigData) => {
+    switch (setting.valueType) {
+      case 'BOOLEAN':
+        return (
+          <select
+            value={editValue}
+            onChange={(e) => setEditValue(e.target.value)}
+            className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none"
+          >
+            <option value="true">Oui</option>
+            <option value="false">Non</option>
+          </select>
+        )
+      case 'DATE':
+        return (
+          <input
+            type="date"
+            value={editValue}
+            onChange={(e) => setEditValue(e.target.value)}
+            className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none"
+          />
+        )
+      case 'INTEGER':
+        return (
+          <input
+            type="number"
+            value={editValue}
+            onChange={(e) => setEditValue(e.target.value)}
+            className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none"
+          />
+        )
+      default:
+        return (
+          <input
+            type="text"
+            value={editValue}
+            onChange={(e) => setEditValue(e.target.value)}
+            className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none"
+          />
+        )
+    }
+  }
+
+  // Group settings by category
+  const groupedSettings = settings.reduce((acc, setting) => {
+    const category = setting.category || 'GENERAL'
+    if (!acc[category]) acc[category] = []
+    acc[category].push(setting)
+    return acc
+  }, {} as Record<string, SystemConfigData[]>)
+
+  // Filter settings
+  const filteredCategories = Object.keys(groupedSettings).filter(category => {
+    if (selectedCategory && category !== selectedCategory) return false
+    if (searchTerm) {
+      const hasMatch = groupedSettings[category].some(s =>
+        s.key.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        s.description?.toLowerCase().includes(searchTerm.toLowerCase())
+      )
+      if (!hasMatch) return false
+    }
+    return true
+  })
+
+  const getFilteredSettings = (category: string) => {
+    if (!searchTerm) return groupedSettings[category]
+    return groupedSettings[category].filter(s =>
+      s.key.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      s.description?.toLowerCase().includes(searchTerm.toLowerCase())
+    )
+  }
+
+  const categories = Object.keys(groupedSettings)
+
+  return (
+    <div className="p-6">
+      {/* Header */}
+      <div className="mb-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-display font-bold text-slate-800">Configuration système</h1>
+            <p className="text-slate-500 mt-1">Gérez les paramètres globaux de l'application</p>
+          </div>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={loadSettings}
+              className="flex items-center gap-2 px-4 py-2.5 text-slate-600 hover:bg-slate-100 rounded-xl transition-colors"
+            >
+              <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+              Actualiser
+            </button>
+          </div>
+        </div>
+
+        {/* Search and Filter */}
+        <div className="mt-4 flex flex-col lg:flex-row gap-4">
+          <div className="flex-1 relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
+            <input
+              type="text"
+              placeholder="Rechercher un paramètre..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="w-full pl-10 pr-4 py-2.5 border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none"
+            />
+          </div>
+          <div className="flex gap-2 flex-wrap">
+            <button
+              onClick={() => setSelectedCategory(null)}
+              className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                selectedCategory === null
+                  ? 'bg-emerald-500 text-white'
+                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+              }`}
+            >
+              Tous
+            </button>
+            {categories.map(category => {
+              const config = CATEGORY_CONFIG[category] || CATEGORY_CONFIG.GENERAL
+              return (
+                <button
+                  key={category}
+                  onClick={() => setSelectedCategory(category)}
+                  className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                    selectedCategory === category
+                      ? 'bg-emerald-500 text-white'
+                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                  }`}
+                >
+                  {config.label}
+                </button>
+              )
+            })}
+          </div>
+        </div>
+      </div>
+
+      {/* Loading State */}
+      {loading && (
+        <div className="flex items-center justify-center py-20">
+          <div className="flex flex-col items-center gap-4">
+            <RefreshCw className="w-8 h-8 text-emerald-500 animate-spin" />
+            <p className="text-slate-500">Chargement des paramètres...</p>
+          </div>
+        </div>
+      )}
+
+      {/* Settings by Category */}
+      {!loading && (
+        <div className="space-y-6">
+          {filteredCategories.length === 0 && (
+            <div className="text-center py-12 bg-slate-50 rounded-2xl">
+              <Settings className="w-12 h-12 text-slate-300 mx-auto mb-4" />
+              <p className="text-slate-500">Aucun paramètre trouvé</p>
+            </div>
+          )}
+
+          {filteredCategories.map(category => {
+            const config = CATEGORY_CONFIG[category] || CATEGORY_CONFIG.GENERAL
+            const CategoryIcon = config.icon
+            const categorySettings = getFilteredSettings(category)
+
+            return (
+              <div key={category} className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
+                {/* Category Header */}
+                <div className="px-6 py-4 bg-slate-50 border-b border-slate-200">
+                  <div className="flex items-center gap-3">
+                    <div className={`p-2 rounded-xl ${config.bgColor} ${config.color}`}>
+                      <CategoryIcon className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <h2 className="font-semibold text-slate-800">{config.label}</h2>
+                      <p className="text-xs text-slate-500">{categorySettings.length} paramètre(s)</p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Settings List */}
+                <div className="divide-y divide-slate-100">
+                  {categorySettings.map(setting => (
+                    <div
+                      key={setting.key}
+                      className={`px-6 py-4 ${setting.isEditable ? 'hover:bg-slate-50' : 'bg-slate-50/50'} transition-colors`}
+                    >
+                      <div className="flex items-start justify-between gap-4">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2">
+                            <code className="text-sm font-mono text-slate-600 bg-slate-100 px-2 py-0.5 rounded">
+                              {setting.key}
+                            </code>
+                            {!setting.isEditable && (
+                              <span className="px-2 py-0.5 text-xs font-medium bg-amber-100 text-amber-700 rounded-full flex items-center gap-1">
+                                <Lock className="w-3 h-3" />
+                                Verrouillé
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-sm text-slate-500 mt-1">{setting.description || 'Aucune description'}</p>
+                        </div>
+
+                        {editingKey === setting.key ? (
+                          <div className="flex items-center gap-2 min-w-[300px]">
+                            <div className="flex-1">
+                              {renderEditInput(setting)}
+                            </div>
+                            <button
+                              onClick={() => handleSave(setting.key)}
+                              disabled={saving === setting.key}
+                              className="p-2 bg-emerald-500 text-white rounded-lg hover:bg-emerald-600 transition-colors disabled:opacity-50"
+                            >
+                              {saving === setting.key ? (
+                                <RefreshCw className="w-4 h-4 animate-spin" />
+                              ) : (
+                                <Check className="w-4 h-4" />
+                              )}
+                            </button>
+                            <button
+                              onClick={handleCancel}
+                              className="p-2 text-slate-500 hover:bg-slate-200 rounded-lg transition-colors"
+                            >
+                              <X className="w-4 h-4" />
+                            </button>
+                          </div>
+                        ) : (
+                          <div className="flex items-center gap-3">
+                            <div className="text-right">
+                              <p className={`font-medium ${
+                                setting.valueType === 'BOOLEAN'
+                                  ? setting.value === 'true'
+                                    ? 'text-emerald-600'
+                                    : 'text-slate-500'
+                                  : 'text-slate-800'
+                              }`}>
+                                {formatValue(setting)}
+                              </p>
+                              <p className="text-xs text-slate-400">
+                                {setting.valueType}
+                              </p>
+                            </div>
+                            {setting.isEditable && (
+                              <button
+                                onClick={() => handleEdit(setting)}
+                                className="p-2 text-slate-500 hover:bg-slate-200 rounded-lg transition-colors"
+                                title="Modifier"
+                              >
+                                <Edit3 className="w-4 h-4" />
+                              </button>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      )}
+
+      {/* Info Footer */}
+      <div className="mt-6 p-4 bg-blue-50 border border-blue-200 rounded-xl">
+        <div className="flex items-start gap-3">
+          <AlertCircle className="w-5 h-5 text-blue-500 flex-shrink-0 mt-0.5" />
+          <div className="text-sm text-blue-700">
+            <p className="font-medium">À propos des paramètres système</p>
+            <p className="mt-1">
+              Les paramètres verrouillés ne peuvent être modifiés que par un administrateur système via la base de données.
+              Les modifications prennent effet immédiatement.
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+/* ============================================
+   ANALYTICS PAGE
+   ============================================ */
+
+interface AnalyticsData {
+  totalUsers: number
+  activeUsers: number
+  totalEvents: number
+  upcomingEvents: number
+  completedEvents: number
+  totalProcedures: number
+  activeProcedures: number
+  totalForms: number
+  formSubmissions: number
+  totalArticles: number
+  publishedArticles: number
+}
+
+interface ChartDataPoint {
+  label: string
+  value: number
+  color?: string
+}
+
+interface ActivityLog {
+  id: string
+  userId: string
+  userName: string
+  action: string
+  resourceType: string
+  resourceId: string
+  details: string
+  createdAt: string
+}
+
+function AnalyticsPage() {
+  const { t } = useTranslation()
+  const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
+
+  // State
+  const [loading, setLoading] = useState(true)
+  const [stats, setStats] = useState<AnalyticsData | null>(null)
+  const [moduleStats, setModuleStats] = useState<ChartDataPoint[]>([])
+  const [eventsByCategory, setEventsByCategory] = useState<ChartDataPoint[]>([])
+  const [eventsBySeverity, setEventsBySeverity] = useState<ChartDataPoint[]>([])
+  const [recentActivity, setRecentActivity] = useState<ActivityLog[]>([])
+  const [selectedPeriod, setSelectedPeriod] = useState<'week' | 'month' | 'quarter' | 'year'>('month')
+  const [activeTab, setActiveTab] = useState<'overview' | 'events' | 'users' | 'activity'>('overview')
+
+  const getHeaders = () => {
+    const authData = localStorage.getItem('auth_token')
+    const token = authData ? JSON.parse(authData).token : null
+    return { 'Content-Type': 'application/json', ...(token && { 'Authorization': `Bearer ${token}` }) }
+  }
+
+  // Load analytics data
+  useEffect(() => {
+    const loadAnalyticsData = async () => {
+      try {
+        setLoading(true)
+
+        const [statsRes, modulesRes, categoryRes, severityRes, activityRes] = await Promise.all([
+          fetch(`${API_URL}/api/analytics/dashboard/stats`, { headers: getHeaders() }),
+          fetch(`${API_URL}/api/analytics/dashboard/modules`, { headers: getHeaders() }),
+          fetch(`${API_URL}/api/analytics/events/by-category`, { headers: getHeaders() }),
+          fetch(`${API_URL}/api/analytics/events/by-severity`, { headers: getHeaders() }),
+          fetch(`${API_URL}/api/analytics/activity/recent?limit=10`, { headers: getHeaders() }),
+        ])
+
+        if (statsRes.ok) {
+          const data = await statsRes.json()
+          setStats(data.data)
+        }
+
+        if (modulesRes.ok) {
+          const data = await modulesRes.json()
+          setModuleStats(data.data || [])
+        }
+
+        if (categoryRes.ok) {
+          const data = await categoryRes.json()
+          setEventsByCategory(data.data || [])
+        }
+
+        if (severityRes.ok) {
+          const data = await severityRes.json()
+          setEventsBySeverity(data.data || [])
+        }
+
+        if (activityRes.ok) {
+          const data = await activityRes.json()
+          setRecentActivity(data.data || [])
+        }
+
+      } catch (error) {
+        console.error('Error loading analytics:', error)
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    loadAnalyticsData()
+  }, [selectedPeriod])
+
+  // KPI cards
+  const kpiCards = stats ? [
+    {
+      title: 'Total Événements',
+      value: stats.totalEvents,
+      change: 12,
+      icon: <Activity className="w-6 h-6" />,
+      color: 'bg-emerald-500',
+      lightBg: 'bg-emerald-50',
+      textColor: 'text-emerald-600',
+    },
+    {
+      title: 'Utilisateurs Actifs',
+      value: stats.activeUsers,
+      change: 8,
+      icon: <Users className="w-6 h-6" />,
+      color: 'bg-blue-500',
+      lightBg: 'bg-blue-50',
+      textColor: 'text-blue-600',
+    },
+    {
+      title: 'Procédures Actives',
+      value: stats.activeProcedures,
+      change: -3,
+      icon: <ClipboardList className="w-6 h-6" />,
+      color: 'bg-purple-500',
+      lightBg: 'bg-purple-50',
+      textColor: 'text-purple-600',
+    },
+    {
+      title: 'Soumissions Formulaires',
+      value: stats.formSubmissions,
+      change: 25,
+      icon: <FileText className="w-6 h-6" />,
+      color: 'bg-amber-500',
+      lightBg: 'bg-amber-50',
+      textColor: 'text-amber-600',
+    },
+  ] : []
+
+  // Severity colors
+  const severityColors: Record<string, string> = {
+    'CRITICAL': 'bg-red-500',
+    'HIGH': 'bg-orange-500',
+    'MEDIUM': 'bg-yellow-500',
+    'LOW': 'bg-green-500',
+  }
+
+  // Action type labels
+  const actionLabels: Record<string, { label: string; color: string }> = {
+    'CREATE': { label: 'Création', color: 'bg-green-100 text-green-700' },
+    'UPDATE': { label: 'Modification', color: 'bg-blue-100 text-blue-700' },
+    'DELETE': { label: 'Suppression', color: 'bg-red-100 text-red-700' },
+    'VIEW': { label: 'Consultation', color: 'bg-slate-100 text-slate-700' },
+    'LOGIN': { label: 'Connexion', color: 'bg-purple-100 text-purple-700' },
+    'LOGOUT': { label: 'Déconnexion', color: 'bg-amber-100 text-amber-700' },
+  }
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-96">
+        <div className="flex flex-col items-center gap-4">
+          <RefreshCw className="w-8 h-8 text-emerald-500 animate-spin" />
+          <p className="text-slate-500">Chargement des analytics...</p>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="p-6 space-y-6">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-display font-bold text-slate-800">Analytics & Rapports</h1>
+          <p className="text-slate-500 mt-1">Visualisez les performances et tendances de la plateforme</p>
+        </div>
+        <div className="flex items-center gap-3">
+          {/* Period Selector */}
+          <select
+            value={selectedPeriod}
+            onChange={(e) => setSelectedPeriod(e.target.value as any)}
+            className="px-4 py-2.5 border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none"
+          >
+            <option value="week">Cette semaine</option>
+            <option value="month">Ce mois</option>
+            <option value="quarter">Ce trimestre</option>
+            <option value="year">Cette année</option>
+          </select>
+          <button className="flex items-center gap-2 px-4 py-2.5 bg-emerald-500 text-white rounded-xl hover:bg-emerald-600 transition-colors">
+            <Download className="w-4 h-4" />
+            Exporter
+          </button>
+        </div>
+      </div>
+
+      {/* Tab Navigation */}
+      <div className="flex gap-2 border-b border-slate-200 pb-2">
+        {[
+          { key: 'overview', label: 'Vue d\'ensemble', icon: <LayoutDashboard className="w-4 h-4" /> },
+          { key: 'events', label: 'Événements', icon: <Activity className="w-4 h-4" /> },
+          { key: 'users', label: 'Utilisateurs', icon: <Users className="w-4 h-4" /> },
+          { key: 'activity', label: 'Activité', icon: <History className="w-4 h-4" /> },
+        ].map(tab => (
+          <button
+            key={tab.key}
+            onClick={() => setActiveTab(tab.key as any)}
+            className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-colors ${
+              activeTab === tab.key
+                ? 'bg-emerald-100 text-emerald-700 font-medium'
+                : 'text-slate-600 hover:bg-slate-100'
+            }`}
+          >
+            {tab.icon}
+            {tab.label}
+          </button>
+        ))}
+      </div>
+
+      {/* KPI Cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
+        {kpiCards.map((card, i) => (
+          <div key={i} className="bg-white rounded-2xl p-5 border border-slate-200 shadow-sm hover:shadow-lg transition-all">
+            <div className="flex items-start justify-between mb-4">
+              <div className={`w-12 h-12 ${card.lightBg} rounded-xl flex items-center justify-center ${card.textColor}`}>
+                {card.icon}
+              </div>
+              <span className={`flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold ${
+                card.change >= 0 ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'
+              }`}>
+                {card.change >= 0 ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
+                {Math.abs(card.change)}%
+              </span>
+            </div>
+            <p className="text-sm text-slate-500 font-medium">{card.title}</p>
+            <p className="text-3xl font-display font-bold text-slate-800 mt-1">{card.value.toLocaleString()}</p>
+          </div>
+        ))}
+      </div>
+
+      {/* Overview Tab */}
+      {activeTab === 'overview' && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {/* Module Distribution */}
+          <div className="bg-white rounded-2xl border border-slate-200 p-6">
+            <div className="flex items-center justify-between mb-6">
+              <h3 className="text-lg font-semibold text-slate-800">Répartition par Module</h3>
+              <BarChart3 className="w-5 h-5 text-slate-400" />
+            </div>
+            <div className="space-y-4">
+              {(moduleStats.length > 0 ? moduleStats : [
+                { label: 'Événements', value: stats?.totalEvents || 0, color: 'bg-emerald-500' },
+                { label: 'Procédures', value: stats?.totalProcedures || 0, color: 'bg-blue-500' },
+                { label: 'Formulaires', value: stats?.totalForms || 0, color: 'bg-purple-500' },
+                { label: 'Articles', value: stats?.totalArticles || 0, color: 'bg-amber-500' },
+              ]).map((item, i) => {
+                const maxValue = Math.max(...(moduleStats.length > 0 ? moduleStats : [
+                  { value: stats?.totalEvents || 1 },
+                  { value: stats?.totalProcedures || 1 },
+                  { value: stats?.totalForms || 1 },
+                  { value: stats?.totalArticles || 1 },
+                ]).map(m => m.value), 1)
+                return (
+                  <div key={i}>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <span className="text-sm font-medium text-slate-700">{item.label}</span>
+                      <span className="text-sm font-bold text-slate-800">{item.value}</span>
+                    </div>
+                    <div className="h-2.5 bg-slate-100 rounded-full overflow-hidden">
+                      <div
+                        className={`h-full ${item.color || 'bg-emerald-500'} rounded-full transition-all duration-500`}
+                        style={{ width: `${(item.value / maxValue) * 100}%` }}
+                      />
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+
+          {/* Events by Severity */}
+          <div className="bg-white rounded-2xl border border-slate-200 p-6">
+            <div className="flex items-center justify-between mb-6">
+              <h3 className="text-lg font-semibold text-slate-800">Événements par Sévérité</h3>
+              <AlertTriangle className="w-5 h-5 text-slate-400" />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              {(eventsBySeverity.length > 0 ? eventsBySeverity : [
+                { label: 'Critique', value: 5, color: 'bg-red-500' },
+                { label: 'Élevée', value: 12, color: 'bg-orange-500' },
+                { label: 'Moyenne', value: 28, color: 'bg-yellow-500' },
+                { label: 'Faible', value: 45, color: 'bg-green-500' },
+              ]).map((item, i) => (
+                <div key={i} className="bg-slate-50 rounded-xl p-4 text-center">
+                  <div className={`w-4 h-4 ${item.color || severityColors[item.label] || 'bg-slate-500'} rounded-full mx-auto mb-2`} />
+                  <p className="text-2xl font-bold text-slate-800">{item.value}</p>
+                  <p className="text-xs text-slate-500 mt-1">{item.label}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Events by Category */}
+          <div className="bg-white rounded-2xl border border-slate-200 p-6 lg:col-span-2">
+            <div className="flex items-center justify-between mb-6">
+              <h3 className="text-lg font-semibold text-slate-800">Événements par Catégorie</h3>
+              <Folder className="w-5 h-5 text-slate-400" />
+            </div>
+            <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
+              {(eventsByCategory.length > 0 ? eventsByCategory : [
+                { label: 'Biosécurité', value: 23, color: '#00CC66' },
+                { label: 'Foyers', value: 15, color: '#CC0000' },
+                { label: 'Investigation', value: 32, color: '#0066CC' },
+                { label: 'Vaccination', value: 45, color: '#00CC66' },
+                { label: 'Surveillance', value: 28, color: '#ef4444' },
+                { label: 'Laboratoire', value: 18, color: '#00CC99' },
+              ]).map((cat, i) => (
+                <div key={i} className="bg-slate-50 rounded-xl p-4 text-center hover:shadow-md transition-shadow cursor-pointer">
+                  <div
+                    className="w-10 h-10 rounded-xl mx-auto mb-2 flex items-center justify-center"
+                    style={{ backgroundColor: (cat.color || '#3B82F6') + '20' }}
+                  >
+                    <Folder className="w-5 h-5" style={{ color: cat.color || '#3B82F6' }} />
+                  </div>
+                  <p className="text-xl font-bold text-slate-800">{cat.value}</p>
+                  <p className="text-xs text-slate-500 mt-1 truncate">{cat.label}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Activity Tab */}
+      {activeTab === 'activity' && (
+        <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
+          <div className="p-5 border-b border-slate-100">
+            <h3 className="text-lg font-semibold text-slate-800">Activité Récente</h3>
+            <p className="text-sm text-slate-500 mt-1">Dernières actions sur la plateforme</p>
+          </div>
+          <div className="divide-y divide-slate-100">
+            {(recentActivity.length > 0 ? recentActivity : [
+              { id: '1', userName: 'Jean Dupont', action: 'CREATE', resourceType: 'event', details: 'Nouvel événement créé', createdAt: new Date().toISOString() },
+              { id: '2', userName: 'Marie Martin', action: 'UPDATE', resourceType: 'procedure', details: 'Procédure mise à jour', createdAt: new Date(Date.now() - 3600000).toISOString() },
+              { id: '3', userName: 'Pierre Durand', action: 'LOGIN', resourceType: 'session', details: 'Connexion réussie', createdAt: new Date(Date.now() - 7200000).toISOString() },
+            ]).map((activity) => (
+              <div key={activity.id} className="flex items-center gap-4 p-4 hover:bg-slate-50 transition-colors">
+                <div className="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center">
+                  <User className="w-5 h-5 text-slate-500" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="font-medium text-slate-800">{activity.userName}</span>
+                    <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
+                      actionLabels[activity.action]?.color || 'bg-slate-100 text-slate-700'
+                    }`}>
+                      {actionLabels[activity.action]?.label || activity.action}
+                    </span>
+                  </div>
+                  <p className="text-sm text-slate-500 truncate">{activity.details}</p>
+                </div>
+                <div className="text-xs text-slate-400">
+                  {new Date(activity.createdAt).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' })}
+                </div>
+              </div>
+            ))}
+          </div>
+          {recentActivity.length === 0 && (
+            <div className="text-center py-12">
+              <History className="w-12 h-12 text-slate-300 mx-auto mb-4" />
+              <p className="text-slate-500">Aucune activité récente</p>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Events Tab */}
+      {activeTab === 'events' && (
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <div className="lg:col-span-2 bg-white rounded-2xl border border-slate-200 p-6">
+            <h3 className="text-lg font-semibold text-slate-800 mb-4">Tendance des Événements</h3>
+            <div className="h-64 flex items-end justify-between gap-2 px-4">
+              {[65, 45, 78, 52, 90, 68, 82, 55, 73, 48, 85, 60].map((value, i) => (
+                <div key={i} className="flex-1 flex flex-col items-center gap-2">
+                  <div
+                    className="w-full bg-emerald-500 rounded-t-lg transition-all hover:bg-emerald-600"
+                    style={{ height: `${value}%` }}
+                  />
+                  <span className="text-xs text-slate-400">
+                    {['Jan', 'Fév', 'Mar', 'Avr', 'Mai', 'Jun', 'Jul', 'Aoû', 'Sep', 'Oct', 'Nov', 'Déc'][i]}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+          <div className="bg-white rounded-2xl border border-slate-200 p-6">
+            <h3 className="text-lg font-semibold text-slate-800 mb-4">Statut des Événements</h3>
+            <div className="space-y-3">
+              {[
+                { label: 'Reportés', value: stats?.upcomingEvents || 0, color: 'bg-blue-500' },
+                { label: 'En cours', value: Math.floor((stats?.totalEvents || 0) * 0.3), color: 'bg-amber-500' },
+                { label: 'Résolus', value: stats?.completedEvents || 0, color: 'bg-emerald-500' },
+                { label: 'Clôturés', value: Math.floor((stats?.totalEvents || 0) * 0.1), color: 'bg-slate-500' },
+              ].map((item, i) => (
+                <div key={i} className="flex items-center gap-3">
+                  <div className={`w-3 h-3 ${item.color} rounded-full`} />
+                  <span className="flex-1 text-sm text-slate-600">{item.label}</span>
+                  <span className="font-bold text-slate-800">{item.value}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Users Tab */}
+      {activeTab === 'users' && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div className="bg-white rounded-2xl border border-slate-200 p-6">
+            <h3 className="text-lg font-semibold text-slate-800 mb-4">Utilisateurs par Rôle</h3>
+            <div className="space-y-4">
+              {[
+                { label: 'Administrateurs', value: 5, color: 'bg-purple-500' },
+                { label: 'Managers', value: 12, color: 'bg-blue-500' },
+                { label: 'Validateurs', value: 18, color: 'bg-emerald-500' },
+                { label: 'Utilisateurs', value: stats?.activeUsers || 50, color: 'bg-slate-500' },
+              ].map((item, i) => {
+                const total = 5 + 12 + 18 + (stats?.activeUsers || 50)
+                return (
+                  <div key={i}>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <span className="text-sm font-medium text-slate-700">{item.label}</span>
+                      <span className="text-sm text-slate-500">{item.value} ({Math.round((item.value / total) * 100)}%)</span>
+                    </div>
+                    <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
+                      <div
+                        className={`h-full ${item.color} rounded-full`}
+                        style={{ width: `${(item.value / total) * 100}%` }}
+                      />
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+          <div className="bg-white rounded-2xl border border-slate-200 p-6">
+            <h3 className="text-lg font-semibold text-slate-800 mb-4">Statistiques Utilisateurs</h3>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="bg-slate-50 rounded-xl p-4 text-center">
+                <Users className="w-8 h-8 text-blue-500 mx-auto mb-2" />
+                <p className="text-2xl font-bold text-slate-800">{stats?.totalUsers || 0}</p>
+                <p className="text-xs text-slate-500">Total Utilisateurs</p>
+              </div>
+              <div className="bg-slate-50 rounded-xl p-4 text-center">
+                <UserPlus className="w-8 h-8 text-emerald-500 mx-auto mb-2" />
+                <p className="text-2xl font-bold text-slate-800">{stats?.activeUsers || 0}</p>
+                <p className="text-xs text-slate-500">Actifs</p>
+              </div>
+              <div className="bg-slate-50 rounded-xl p-4 text-center">
+                <TrendingUp className="w-8 h-8 text-purple-500 mx-auto mb-2" />
+                <p className="text-2xl font-bold text-slate-800">+{Math.round((stats?.activeUsers || 0) * 0.12)}</p>
+                <p className="text-xs text-slate-500">Ce mois</p>
+              </div>
+              <div className="bg-slate-50 rounded-xl p-4 text-center">
+                <Clock className="w-8 h-8 text-amber-500 mx-auto mb-2" />
+                <p className="text-2xl font-bold text-slate-800">2.4h</p>
+                <p className="text-xs text-slate-500">Temps moyen</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+/* ============================================
+   NOTIFICATIONS PAGE
+   ============================================ */
+
+interface NotificationData {
+  id: string
+  type: 'INFO' | 'SUCCESS' | 'WARNING' | 'ERROR' | 'SYSTEM'
+  category: string
+  title: string
+  message: string
+  link?: string
+  isRead: boolean
+  isArchived: boolean
+  createdAt: string
+  readAt?: string
+}
+
+interface NotificationPreferences {
+  emailEnabled: boolean
+  pushEnabled: boolean
+  inAppEnabled: boolean
+  quietHoursEnabled: boolean
+  quietHoursStart?: string
+  quietHoursEnd?: string
+  categories: Record<string, { email: boolean; push: boolean; inApp: boolean }>
+}
+
+function NotificationsPage() {
+  const { t } = useTranslation()
+  const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
+
+  // State
+  const [loading, setLoading] = useState(true)
+  const [notifications, setNotifications] = useState<NotificationData[]>([])
+  const [unreadCount, setUnreadCount] = useState(0)
+  const [filter, setFilter] = useState<'all' | 'unread' | 'archived'>('all')
+  const [preferences, setPreferences] = useState<NotificationPreferences | null>(null)
+  const [showPreferences, setShowPreferences] = useState(false)
+  const [selectedNotifications, setSelectedNotifications] = useState<Set<string>>(new Set())
+
+  const getHeaders = () => {
+    const authData = localStorage.getItem('auth_token')
+    const token = authData ? JSON.parse(authData).token : null
+    return { 'Content-Type': 'application/json', ...(token && { 'Authorization': `Bearer ${token}` }) }
+  }
+
+  // Load notifications
+  const loadNotifications = async () => {
+    try {
+      setLoading(true)
+      const params = new URLSearchParams()
+      if (filter === 'unread') params.append('isRead', 'false')
+      if (filter === 'archived') params.append('isArchived', 'true')
+
+      const [notifRes, countRes, prefsRes] = await Promise.all([
+        fetch(`${API_URL}/api/notifications?${params.toString()}`, { headers: getHeaders() }),
+        fetch(`${API_URL}/api/notifications/unread/count`, { headers: getHeaders() }),
+        fetch(`${API_URL}/api/notifications/preferences`, { headers: getHeaders() }),
+      ])
+
+      if (notifRes.ok) {
+        const data = await notifRes.json()
+        setNotifications(data.data?.items || data.data || [])
+      }
+
+      if (countRes.ok) {
+        const data = await countRes.json()
+        setUnreadCount(data.data?.count || 0)
+      }
+
+      if (prefsRes.ok) {
+        const data = await prefsRes.json()
+        setPreferences(data.data)
+      }
+
+    } catch (error) {
+      console.error('Error loading notifications:', error)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    loadNotifications()
+  }, [filter])
+
+  // Mark as read
+  const markAsRead = async (id: string) => {
+    try {
+      await fetch(`${API_URL}/api/notifications/${id}/read`, {
+        method: 'POST',
+        headers: getHeaders(),
+      })
+      setNotifications(prev => prev.map(n => n.id === id ? { ...n, isRead: true } : n))
+      setUnreadCount(prev => Math.max(0, prev - 1))
+    } catch (error) {
+      console.error('Error marking as read:', error)
+    }
+  }
+
+  // Mark all as read
+  const markAllAsRead = async () => {
+    try {
+      await fetch(`${API_URL}/api/notifications/read-all`, {
+        method: 'POST',
+        headers: getHeaders(),
+      })
+      setNotifications(prev => prev.map(n => ({ ...n, isRead: true })))
+      setUnreadCount(0)
+    } catch (error) {
+      console.error('Error marking all as read:', error)
+    }
+  }
+
+  // Archive notification
+  const archiveNotification = async (id: string) => {
+    try {
+      await fetch(`${API_URL}/api/notifications/${id}/archive`, {
+        method: 'POST',
+        headers: getHeaders(),
+      })
+      if (filter !== 'archived') {
+        setNotifications(prev => prev.filter(n => n.id !== id))
+      } else {
+        setNotifications(prev => prev.map(n => n.id === id ? { ...n, isArchived: true } : n))
+      }
+    } catch (error) {
+      console.error('Error archiving notification:', error)
+    }
+  }
+
+  // Delete notification
+  const deleteNotification = async (id: string) => {
+    try {
+      await fetch(`${API_URL}/api/notifications/${id}`, {
+        method: 'DELETE',
+        headers: getHeaders(),
+      })
+      setNotifications(prev => prev.filter(n => n.id !== id))
+    } catch (error) {
+      console.error('Error deleting notification:', error)
+    }
+  }
+
+  // Get notification icon
+  const getNotificationIcon = (type: string) => {
+    switch (type) {
+      case 'SUCCESS': return <CheckCircle className="w-5 h-5 text-emerald-500" />
+      case 'WARNING': return <AlertTriangle className="w-5 h-5 text-amber-500" />
+      case 'ERROR': return <AlertCircle className="w-5 h-5 text-red-500" />
+      case 'SYSTEM': return <Settings className="w-5 h-5 text-purple-500" />
+      default: return <Bell className="w-5 h-5 text-blue-500" />
+    }
+  }
+
+  // Get notification type style
+  const getNotificationStyle = (type: string, isRead: boolean) => {
+    const baseStyle = isRead ? 'bg-slate-50' : 'bg-white border-l-4'
+    switch (type) {
+      case 'SUCCESS': return `${baseStyle} ${!isRead ? 'border-l-emerald-500' : ''}`
+      case 'WARNING': return `${baseStyle} ${!isRead ? 'border-l-amber-500' : ''}`
+      case 'ERROR': return `${baseStyle} ${!isRead ? 'border-l-red-500' : ''}`
+      case 'SYSTEM': return `${baseStyle} ${!isRead ? 'border-l-purple-500' : ''}`
+      default: return `${baseStyle} ${!isRead ? 'border-l-blue-500' : ''}`
+    }
+  }
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-96">
+        <div className="flex flex-col items-center gap-4">
+          <RefreshCw className="w-8 h-8 text-emerald-500 animate-spin" />
+          <p className="text-slate-500">Chargement des notifications...</p>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="p-6 space-y-6">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-display font-bold text-slate-800">Notifications</h1>
+          <p className="text-slate-500 mt-1">
+            {unreadCount > 0 ? `${unreadCount} notification(s) non lue(s)` : 'Toutes les notifications sont lues'}
+          </p>
+        </div>
+        <div className="flex items-center gap-3">
+          {unreadCount > 0 && (
+            <button
+              onClick={markAllAsRead}
+              className="flex items-center gap-2 px-4 py-2.5 text-slate-600 hover:bg-slate-100 rounded-xl transition-colors"
+            >
+              <CheckCircle className="w-4 h-4" />
+              Tout marquer comme lu
+            </button>
+          )}
+          <button
+            onClick={() => setShowPreferences(!showPreferences)}
+            className="flex items-center gap-2 px-4 py-2.5 bg-slate-100 text-slate-700 rounded-xl hover:bg-slate-200 transition-colors"
+          >
+            <Settings className="w-4 h-4" />
+            Préférences
+          </button>
+        </div>
+      </div>
+
+      {/* Preferences Panel */}
+      {showPreferences && preferences && (
+        <div className="bg-white rounded-2xl border border-slate-200 p-6">
+          <div className="flex items-center justify-between mb-6">
+            <h3 className="text-lg font-semibold text-slate-800">Préférences de notification</h3>
+            <button onClick={() => setShowPreferences(false)} className="p-2 hover:bg-slate-100 rounded-lg">
+              <X className="w-5 h-5 text-slate-500" />
+            </button>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            {/* Email */}
+            <div className="flex items-center justify-between p-4 bg-slate-50 rounded-xl">
+              <div className="flex items-center gap-3">
+                <Mail className="w-5 h-5 text-slate-500" />
+                <span className="font-medium text-slate-700">Email</span>
+              </div>
+              <button
+                onClick={() => setPreferences({ ...preferences, emailEnabled: !preferences.emailEnabled })}
+                className={`w-12 h-6 rounded-full transition-colors ${preferences.emailEnabled ? 'bg-emerald-500' : 'bg-slate-300'}`}
+              >
+                <div className={`w-5 h-5 bg-white rounded-full shadow transition-transform ${preferences.emailEnabled ? 'translate-x-6' : 'translate-x-0.5'}`} />
+              </button>
+            </div>
+
+            {/* Push */}
+            <div className="flex items-center justify-between p-4 bg-slate-50 rounded-xl">
+              <div className="flex items-center gap-3">
+                <Bell className="w-5 h-5 text-slate-500" />
+                <span className="font-medium text-slate-700">Push</span>
+              </div>
+              <button
+                onClick={() => setPreferences({ ...preferences, pushEnabled: !preferences.pushEnabled })}
+                className={`w-12 h-6 rounded-full transition-colors ${preferences.pushEnabled ? 'bg-emerald-500' : 'bg-slate-300'}`}
+              >
+                <div className={`w-5 h-5 bg-white rounded-full shadow transition-transform ${preferences.pushEnabled ? 'translate-x-6' : 'translate-x-0.5'}`} />
+              </button>
+            </div>
+
+            {/* In-App */}
+            <div className="flex items-center justify-between p-4 bg-slate-50 rounded-xl">
+              <div className="flex items-center gap-3">
+                <Monitor className="w-5 h-5 text-slate-500" />
+                <span className="font-medium text-slate-700">In-App</span>
+              </div>
+              <button
+                onClick={() => setPreferences({ ...preferences, inAppEnabled: !preferences.inAppEnabled })}
+                className={`w-12 h-6 rounded-full transition-colors ${preferences.inAppEnabled ? 'bg-emerald-500' : 'bg-slate-300'}`}
+              >
+                <div className={`w-5 h-5 bg-white rounded-full shadow transition-transform ${preferences.inAppEnabled ? 'translate-x-6' : 'translate-x-0.5'}`} />
+              </button>
+            </div>
+          </div>
+
+          {/* Quiet Hours */}
+          <div className="mt-6 p-4 bg-slate-50 rounded-xl">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-3">
+                <Clock className="w-5 h-5 text-slate-500" />
+                <span className="font-medium text-slate-700">Heures calmes</span>
+              </div>
+              <button
+                onClick={() => setPreferences({ ...preferences, quietHoursEnabled: !preferences.quietHoursEnabled })}
+                className={`w-12 h-6 rounded-full transition-colors ${preferences.quietHoursEnabled ? 'bg-emerald-500' : 'bg-slate-300'}`}
+              >
+                <div className={`w-5 h-5 bg-white rounded-full shadow transition-transform ${preferences.quietHoursEnabled ? 'translate-x-6' : 'translate-x-0.5'}`} />
+              </button>
+            </div>
+            {preferences.quietHoursEnabled && (
+              <div className="flex items-center gap-4">
+                <div>
+                  <label className="text-sm text-slate-500 mb-1 block">Début</label>
+                  <input
+                    type="time"
+                    value={preferences.quietHoursStart || '22:00'}
+                    onChange={(e) => setPreferences({ ...preferences, quietHoursStart: e.target.value })}
+                    className="px-3 py-2 border border-slate-200 rounded-lg"
+                  />
+                </div>
+                <div>
+                  <label className="text-sm text-slate-500 mb-1 block">Fin</label>
+                  <input
+                    type="time"
+                    value={preferences.quietHoursEnd || '07:00'}
+                    onChange={(e) => setPreferences({ ...preferences, quietHoursEnd: e.target.value })}
+                    className="px-3 py-2 border border-slate-200 rounded-lg"
+                  />
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Filter Tabs */}
+      <div className="flex gap-2">
+        {[
+          { key: 'all', label: 'Toutes', count: notifications.length },
+          { key: 'unread', label: 'Non lues', count: unreadCount },
+          { key: 'archived', label: 'Archivées', count: 0 },
+        ].map(tab => (
+          <button
+            key={tab.key}
+            onClick={() => setFilter(tab.key as any)}
+            className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-colors ${
+              filter === tab.key
+                ? 'bg-emerald-100 text-emerald-700 font-medium'
+                : 'text-slate-600 hover:bg-slate-100'
+            }`}
+          >
+            {tab.label}
+            {tab.count > 0 && (
+              <span className={`px-2 py-0.5 rounded-full text-xs ${
+                filter === tab.key ? 'bg-emerald-200' : 'bg-slate-200'
+              }`}>
+                {tab.count}
+              </span>
+            )}
+          </button>
+        ))}
+      </div>
+
+      {/* Notifications List */}
+      <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
+        {notifications.length === 0 ? (
+          <div className="text-center py-16">
+            <Bell className="w-16 h-16 text-slate-200 mx-auto mb-4" />
+            <h3 className="text-lg font-semibold text-slate-600 mb-2">Aucune notification</h3>
+            <p className="text-slate-500">
+              {filter === 'unread' ? 'Toutes vos notifications ont été lues' : 'Vous n\'avez pas encore de notifications'}
+            </p>
+          </div>
+        ) : (
+          <div className="divide-y divide-slate-100">
+            {notifications.map(notification => (
+              <div
+                key={notification.id}
+                className={`flex items-start gap-4 p-4 hover:bg-slate-50/50 transition-colors ${getNotificationStyle(notification.type, notification.isRead)}`}
+              >
+                {/* Icon */}
+                <div className="flex-shrink-0 mt-1">
+                  {getNotificationIcon(notification.type)}
+                </div>
+
+                {/* Content */}
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-start justify-between gap-4">
+                    <div>
+                      <h4 className={`font-medium ${notification.isRead ? 'text-slate-600' : 'text-slate-800'}`}>
+                        {notification.title}
+                      </h4>
+                      <p className={`text-sm mt-1 ${notification.isRead ? 'text-slate-400' : 'text-slate-500'}`}>
+                        {notification.message}
+                      </p>
+                      <p className="text-xs text-slate-400 mt-2">
+                        {new Date(notification.createdAt).toLocaleString('fr-FR', {
+                          dateStyle: 'medium',
+                          timeStyle: 'short'
+                        })}
+                      </p>
+                    </div>
+
+                    {/* Actions */}
+                    <div className="flex items-center gap-1 flex-shrink-0">
+                      {!notification.isRead && (
+                        <button
+                          onClick={() => markAsRead(notification.id)}
+                          className="p-2 hover:bg-slate-100 rounded-lg text-slate-400 hover:text-emerald-600 transition-colors"
+                          title="Marquer comme lu"
+                        >
+                          <Check className="w-4 h-4" />
+                        </button>
+                      )}
+                      <button
+                        onClick={() => archiveNotification(notification.id)}
+                        className="p-2 hover:bg-slate-100 rounded-lg text-slate-400 hover:text-blue-600 transition-colors"
+                        title="Archiver"
+                      >
+                        <Archive className="w-4 h-4" />
+                      </button>
+                      <button
+                        onClick={() => deleteNotification(notification.id)}
+                        className="p-2 hover:bg-slate-100 rounded-lg text-slate-400 hover:text-red-600 transition-colors"
+                        title="Supprimer"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Link */}
+                  {notification.link && (
+                    <button className="mt-2 text-sm text-emerald-600 hover:text-emerald-700 font-medium flex items-center gap-1">
+                      Voir les détails <ArrowRight className="w-3 h-3" />
+                    </button>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+/* ============================================
+   EVENTS PAGE
+   ============================================ */
+
+interface EventData {
+  id: string
+  code: string
+  title: string
+  description?: string
+  status: 'REPORTED' | 'INVESTIGATING' | 'CONFIRMED' | 'RESOLVED' | 'CLOSED'
+  severity: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL'
+  location: string
+  latitude?: number
+  longitude?: number
+  categoryId: string
+  category?: { id: string; code: string; name: string; color: string; icon: string }
+  organizationalUnitId?: string
+  organizationalUnit?: { id: string; code: string; name: string; type: string }
+  reportedById: string
+  reportedBy?: { id: string; firstName: string; lastName: string; email: string }
+  assignedToId?: string
+  assignedTo?: { id: string; firstName: string; lastName: string; email: string }
+  reportedAt: string
+  confirmedAt?: string
+  resolvedAt?: string
+  closedAt?: string
+  createdAt: string
+  updatedAt: string
+  comments?: any[]
+  attachments?: any[]
+  tasks?: any[]
+}
+
+interface EventCategoryData {
+  id: string
+  code: string
+  name: string
+  description?: string
+  color: string
+  icon: string
+  isActive: boolean
+}
+
+interface EventStats {
+  total: number
+  byStatus: {
+    REPORTED: number
+    INVESTIGATING: number
+    CONFIRMED: number
+    RESOLVED: number
+    CLOSED: number
+  }
+  bySeverity: { LOW: number; MEDIUM: number; HIGH: number; CRITICAL: number }
+  byCategory: Array<{ categoryId: string; category: { id: string; name: string; color: string }; count: number }>
+}
+
+interface ProcedureData {
+  id: string
+  code: string
+  name: string
+  description?: string
+  categoryId?: string
+}
+
+interface UserData {
+  id: string
+  firstName: string
+  lastName: string
+  email: string
+}
+
+interface DocumentTypeData {
+  id: string
+  code: string
+  name: string
+}
+
+const STATUS_CONFIG = {
+  REPORTED: { label: 'Reçu', color: 'blue', icon: Inbox, bgColor: 'bg-blue-500', lightBg: 'bg-blue-50', textColor: 'text-blue-600' },
+  INVESTIGATING: { label: 'En cours', color: 'amber', icon: Clock, bgColor: 'bg-amber-500', lightBg: 'bg-amber-50', textColor: 'text-amber-600' },
+  CONFIRMED: { label: 'Programmé', color: 'purple', icon: Calendar, bgColor: 'bg-purple-500', lightBg: 'bg-purple-50', textColor: 'text-purple-600' },
+  RESOLVED: { label: 'Traité', color: 'emerald', icon: CheckCircle, bgColor: 'bg-emerald-500', lightBg: 'bg-emerald-50', textColor: 'text-emerald-600' },
+  CLOSED: { label: 'Clôturé', color: 'slate', icon: Archive, bgColor: 'bg-slate-500', lightBg: 'bg-slate-50', textColor: 'text-slate-600' },
+}
+
+const SEVERITY_CONFIG = {
+  LOW: { label: 'Faible', color: 'green', bgColor: 'bg-green-100', textColor: 'text-green-700' },
+  MEDIUM: { label: 'Moyen', color: 'yellow', bgColor: 'bg-yellow-100', textColor: 'text-yellow-700' },
+  HIGH: { label: 'Élevé', color: 'orange', bgColor: 'bg-orange-100', textColor: 'text-orange-700' },
+  CRITICAL: { label: 'Critique', color: 'red', bgColor: 'bg-red-100', textColor: 'text-red-700' },
+}
+
+// Mapping des noms d'icônes de la BD vers les composants Lucide
+const ICON_MAP: { [key: string]: React.ComponentType<{ className?: string; style?: React.CSSProperties }> } = {
+  'folder': Folder,
+  'folder-open': FolderOpen,
+  'shield': Shield,
+  'shield-alert': ShieldAlert,
+  'shield-check': ShieldCheck,
+  'alert-triangle': AlertTriangle,
+  'alert-circle': AlertCircle,
+  'search': Search,
+  'clipboard': ClipboardList,
+  'clipboard-list': ClipboardList,
+  'file-text': FileText,
+  'file-warning': FileWarning,
+  'file-check': FileCheck,
+  'activity': Activity,
+  'heart-pulse': HeartPulse,
+  'stethoscope': Stethoscope,
+  'thermometer': Thermometer,
+  'microscope': Microscope,
+  'flask': FlaskConical,
+  'flask-conical': FlaskConical,
+  'test-tube': TestTube2,
+  'biohazard': Biohazard,
+  'syringe': Syringe,
+  'pill': Pill,
+  'bug': Bug,
+  'eye': Eye,
+  'bird': Bird,
+  'dog': Dog,
+  'cat': Cat,
+  'beef': Beef,
+  'fish': Fish,
+  'rat': Rat,
+  'flame': Flame,
+  'droplet': Droplet,
+  'leaf': Leaf,
+  'tree': TreePine,
+  'siren': Siren,
+  'megaphone': Megaphone,
+  'bell': Bell,
+  'calendar': Calendar,
+  'clock': Clock,
+  'map-pin': MapPin,
+  'map-pinned': MapPinned,
+  'navigation': Navigation,
+  'route': Route,
+  'truck': Truck,
+  'warehouse': Warehouse,
+  'factory': Factory,
+  'home': Home,
+  'building': Building2,
+  'users': Users,
+  'user': User,
+  'bar-chart': BarChart3,
+  'trending-up': TrendingUp,
+  'target': Target,
+  'flag': Flag,
+  'bookmark': Bookmark,
+  'tag': Tag,
+  'tags': Tags,
+  'star': Star,
+  'award': Award,
+  'trophy': Trophy,
+  'lightbulb': Lightbulb,
+  'zap': Zap,
+  'settings': Settings,
+  'database': Database,
+  'archive': Archive,
+  'inbox': Inbox,
+  'send': Send,
+  'check-circle': CheckCircle,
+  'help-circle': HelpCircle,
+}
+
+// Fonction pour obtenir le composant icône à partir du nom
+const getCategoryIcon = (iconName: string | undefined): React.ComponentType<{ className?: string; style?: React.CSSProperties }> => {
+  if (!iconName) return Folder
+  const normalizedName = iconName.toLowerCase().trim()
+  return ICON_MAP[normalizedName] || Folder
+}
+
+function EventsPage({ initialStatus = 'INVESTIGATING' }: { initialStatus?: string }) {
+  const { t } = useTranslation()
+  const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
+
+  // View state
+  const [currentView, setCurrentView] = useState<'dashboard' | 'list' | 'detail' | 'form'>('dashboard')
+  const [selectedStatus, setSelectedStatus] = useState<string>(initialStatus)
+  const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null)
+  const [selectedEvent, setSelectedEvent] = useState<EventData | null>(null)
+
+  // Data state
+  const [events, setEvents] = useState<EventData[]>([])
+  const [categories, setCategories] = useState<EventCategoryData[]>([])
+  const [stats, setStats] = useState<EventStats | null>(null)
+  const [procedures, setProcedures] = useState<ProcedureData[]>([])
+  const [users, setUsers] = useState<UserData[]>([])
+  const [documentTypes, setDocumentTypes] = useState<DocumentTypeData[]>([])
+  const [provenances, setProvenances] = useState<any[]>([])
+
+  // Loading states
+  const [loading, setLoading] = useState(true)
+  const [loadingEvents, setLoadingEvents] = useState(false)
+  const [saving, setSaving] = useState(false)
+
+  // Form state
+  const [formData, setFormData] = useState({
+    title: '',
+    description: '',
+    categoryId: '',
+    severity: 'MEDIUM' as 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL',
+    location: '',
+    latitude: '',
+    longitude: '',
+    organizationalUnitId: '',
+    provenanceId: '',
+    initiatorName: '',
+    initiatorContact: '',
+    transmissionType: 'MANUAL' as 'MANUAL' | 'AUTOMATIC',
+    procedureId: '',
+    manualRecipients: [] as { userId: string; duration: number; stepOrder: number }[],
+    attachments: [] as { file: File; documentTypeId: string }[],
+  })
+
+  const getHeaders = () => {
+    const authData = localStorage.getItem('auth_token')
+    const token = authData ? JSON.parse(authData).token : null
+    return { 'Content-Type': 'application/json', ...(token && { 'Authorization': `Bearer ${token}` }) }
+  }
+
+  // Load initial data
+  const loadInitialData = async () => {
+    try {
+      setLoading(true)
+      const [statsRes, categoriesRes, proceduresRes, usersRes, docTypesRes, provenancesRes] = await Promise.all([
+        fetch(`${API_URL}/api/events/stats`, { headers: getHeaders() }),
+        fetch(`${API_URL}/api/config/event-categories`, { headers: getHeaders() }),
+        fetch(`${API_URL}/api/procedures`, { headers: getHeaders() }),
+        fetch(`${API_URL}/api/users`, { headers: getHeaders() }),
+        fetch(`${API_URL}/api/config/document-types`, { headers: getHeaders() }),
+        fetch(`${API_URL}/api/config/event-provenances`, { headers: getHeaders() }),
+      ])
+
+      if (statsRes.ok) {
+        const data = await statsRes.json()
+        setStats(data.data)
+      }
+      if (categoriesRes.ok) {
+        const data = await categoriesRes.json()
+        setCategories(data.data || [])
+      }
+      if (proceduresRes.ok) {
+        const data = await proceduresRes.json()
+        setProcedures(data.data?.items || data.data || [])
+      }
+      if (usersRes.ok) {
+        const data = await usersRes.json()
+        setUsers(data.data?.items || data.data || [])
+      }
+      if (docTypesRes.ok) {
+        const data = await docTypesRes.json()
+        setDocumentTypes(data.data || [])
+      }
+      if (provenancesRes.ok) {
+        const data = await provenancesRes.json()
+        setProvenances(data.data || [])
+      }
+    } catch (error) {
+      console.error('Error loading initial data:', error)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  // Load events for selected status and category
+  const loadEvents = async (status: string, categoryId?: string) => {
+    try {
+      setLoadingEvents(true)
+      let url = `${API_URL}/api/events?status=${status}&pageSize=50`
+      if (categoryId) url += `&categoryId=${categoryId}`
+
+      const response = await fetch(url, { headers: getHeaders() })
+      if (response.ok) {
+        const data = await response.json()
+        setEvents(data.data?.items || [])
+      }
+    } catch (error) {
+      console.error('Error loading events:', error)
+    } finally {
+      setLoadingEvents(false)
+    }
+  }
+
+  // Load event details
+  const loadEventDetail = async (eventId: string) => {
+    try {
+      const response = await fetch(`${API_URL}/api/events/${eventId}?includeDetails=true`, { headers: getHeaders() })
+      if (response.ok) {
+        const data = await response.json()
+        setSelectedEvent(data.data)
+      }
+    } catch (error) {
+      console.error('Error loading event details:', error)
+    }
+  }
+
+  useEffect(() => {
+    loadInitialData()
+  }, [])
+
+  // Get category counts for selected status
+  const getCategoryCounts = () => {
+    if (!stats) return []
+    const statusEvents = stats.byCategory.filter(c => {
+      // This is a simplification - in reality we'd need per-status-per-category counts
+      return true
+    })
+    return categories.map(cat => {
+      const statCat = stats.byCategory.find(sc => sc.categoryId === cat.id)
+      return {
+        ...cat,
+        count: statCat?.count || 0
+      }
+    })
+  }
+
+  // Handle status tab click
+  const handleStatusClick = (status: string) => {
+    setSelectedStatus(status)
+    setSelectedCategoryId(null)
+    setCurrentView('dashboard')
+  }
+
+  // Handle category card click
+  const handleCategoryClick = (categoryId: string) => {
+    setSelectedCategoryId(categoryId)
+    loadEvents(selectedStatus, categoryId)
+    setCurrentView('list')
+  }
+
+  // Handle event click
+  const handleEventClick = (event: EventData) => {
+    loadEventDetail(event.id)
+    setCurrentView('detail')
+  }
+
+  // Handle back navigation
+  const handleBack = () => {
+    if (currentView === 'detail') {
+      setCurrentView('list')
+      setSelectedEvent(null)
+    } else if (currentView === 'list') {
+      setCurrentView('dashboard')
+      setSelectedCategoryId(null)
+    } else if (currentView === 'form') {
+      setCurrentView('dashboard')
+      resetForm()
+    }
+  }
+
+  // Reset form
+  const resetForm = () => {
+    setFormData({
+      title: '',
+      description: '',
+      categoryId: '',
+      severity: 'MEDIUM',
+      location: '',
+      latitude: '',
+      longitude: '',
+      organizationalUnitId: '',
+      provenanceId: '',
+      initiatorName: '',
+      initiatorContact: '',
+      transmissionType: 'MANUAL',
+      procedureId: '',
+      manualRecipients: [],
+      attachments: [],
+    })
+  }
+
+  // Handle create event
+  const handleCreateEvent = async () => {
+    if (!formData.title || !formData.categoryId || !formData.location) {
+      alert('Veuillez remplir tous les champs obligatoires')
+      return
+    }
+
+    try {
+      setSaving(true)
+      const payload = {
+        title: formData.title,
+        description: formData.description || null,
+        categoryId: formData.categoryId,
+        severity: formData.severity,
+        location: formData.location,
+        latitude: formData.latitude ? parseFloat(formData.latitude) : null,
+        longitude: formData.longitude ? parseFloat(formData.longitude) : null,
+        organizationalUnitId: formData.organizationalUnitId || null,
+      }
+
+      const response = await fetch(`${API_URL}/api/events`, {
+        method: 'POST',
+        headers: getHeaders(),
+        body: JSON.stringify(payload)
+      })
+
+      if (response.ok) {
+        const data = await response.json()
+        // If automatic transmission, link to procedure
+        if (formData.transmissionType === 'AUTOMATIC' && formData.procedureId) {
+          // TODO: Link event to procedure execution
+        }
+        loadInitialData()
+        setCurrentView('dashboard')
+        resetForm()
+      } else {
+        const errorData = await response.json()
+        alert(`Erreur: ${errorData.message || 'Erreur lors de la création'}`)
+      }
+    } catch (error) {
+      console.error('Error creating event:', error)
+      alert('Erreur réseau lors de la création')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  // Handle status change
+  const handleChangeStatus = async (eventId: string, newStatus: string, reason?: string) => {
+    try {
+      const response = await fetch(`${API_URL}/api/events/${eventId}/status`, {
+        method: 'PUT',
+        headers: getHeaders(),
+        body: JSON.stringify({ status: newStatus, reason })
+      })
+
+      if (response.ok) {
+        loadEventDetail(eventId)
+        loadInitialData()
+      }
+    } catch (error) {
+      console.error('Error changing status:', error)
+    }
+  }
+
+  // Handle assignment
+  const handleAssign = async (eventId: string, userId: string | null) => {
+    try {
+      const response = await fetch(`${API_URL}/api/events/${eventId}/assign`, {
+        method: 'PUT',
+        headers: getHeaders(),
+        body: JSON.stringify({ assignedToId: userId })
+      })
+
+      if (response.ok) {
+        loadEventDetail(eventId)
+      }
+    } catch (error) {
+      console.error('Error assigning event:', error)
+    }
+  }
+
+  // Add manual recipient
+  const addManualRecipient = () => {
+    setFormData(prev => ({
+      ...prev,
+      manualRecipients: [...prev.manualRecipients, { userId: '', duration: 24, stepOrder: prev.manualRecipients.length + 1 }]
+    }))
+  }
+
+  // Remove manual recipient
+  const removeManualRecipient = (index: number) => {
+    setFormData(prev => ({
+      ...prev,
+      manualRecipients: prev.manualRecipients.filter((_, i) => i !== index)
+    }))
+  }
+
+  // Get status count
+  const getStatusCount = (status: string) => {
+    if (!stats) return 0
+    return stats.byStatus[status as keyof typeof stats.byStatus] || 0
+  }
+
+  // Loading state
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-96">
+        <div className="flex flex-col items-center gap-4">
+          <RefreshCw className="w-8 h-8 text-emerald-500 animate-spin" />
+          <p className="text-slate-500">Chargement des événements...</p>
+        </div>
+      </div>
+    )
+  }
+
+  // Form View
+  if (currentView === 'form') {
+    return (
+      <div className="p-6">
+        {/* Header */}
+        <div className="flex items-center justify-between mb-6">
+          <div className="flex items-center gap-4">
+            <button onClick={handleBack} className="p-2 hover:bg-slate-100 rounded-lg transition-colors">
+              <ArrowLeft className="w-5 h-5 text-slate-600" />
+            </button>
+            <div>
+              <h1 className="text-2xl font-display font-bold text-slate-800">Nouvel événement</h1>
+              <p className="text-slate-500 mt-1">Créez un nouvel événement sanitaire</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-3">
+            <button onClick={handleBack} className="px-4 py-2.5 text-slate-600 hover:bg-slate-100 rounded-xl transition-colors">
+              Annuler
+            </button>
+            <button
+              onClick={handleCreateEvent}
+              disabled={saving || !formData.title || !formData.categoryId}
+              className="flex items-center gap-2 px-6 py-2.5 bg-emerald-500 text-white rounded-xl hover:bg-emerald-600 transition-colors disabled:opacity-50"
+            >
+              {saving && <RefreshCw className="w-4 h-4 animate-spin" />}
+              Créer l'événement
+            </button>
+          </div>
+        </div>
+
+        {/* Form Content */}
+        <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
+          {/* Main Info */}
+          <div className="xl:col-span-2 space-y-6">
+            {/* Basic Info */}
+            <div className="bg-white rounded-2xl border border-slate-200 p-6">
+              <div className="flex items-center gap-3 mb-5">
+                <div className="p-2 rounded-xl bg-blue-100 text-blue-600">
+                  <FileText className="w-5 h-5" />
+                </div>
+                <h3 className="font-semibold text-slate-800">Informations de base</h3>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="md:col-span-2">
+                  <label className="block text-sm font-medium text-slate-700 mb-1.5">Objet / Titre *</label>
+                  <input
+                    type="text"
+                    value={formData.title}
+                    onChange={(e) => setFormData({ ...formData, title: e.target.value })}
+                    placeholder="Titre de l'événement"
+                    className="w-full px-4 py-2.5 border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1.5">Catégorie *</label>
+                  <select
+                    value={formData.categoryId}
+                    onChange={(e) => setFormData({ ...formData, categoryId: e.target.value })}
+                    className="w-full px-4 py-2.5 border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none"
+                  >
+                    <option value="">Sélectionner une catégorie</option>
+                    {categories.map(cat => (
+                      <option key={cat.id} value={cat.id}>{cat.name}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1.5">Priorité *</label>
+                  <select
+                    value={formData.severity}
+                    onChange={(e) => setFormData({ ...formData, severity: e.target.value as any })}
+                    className="w-full px-4 py-2.5 border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none"
+                  >
+                    {Object.entries(SEVERITY_CONFIG).map(([key, config]) => (
+                      <option key={key} value={key}>{config.label}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="md:col-span-2">
+                  <label className="block text-sm font-medium text-slate-700 mb-1.5">Description / Message</label>
+                  <textarea
+                    value={formData.description}
+                    onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                    placeholder="Description détaillée de l'événement..."
+                    rows={4}
+                    className="w-full px-4 py-2.5 border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none resize-none"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Source & Initiator */}
+            <div className="bg-white rounded-2xl border border-slate-200 p-6">
+              <div className="flex items-center gap-3 mb-5">
+                <div className="p-2 rounded-xl bg-purple-100 text-purple-600">
+                  <User className="w-5 h-5" />
+                </div>
+                <h3 className="font-semibold text-slate-800">Source & Initiateur</h3>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1.5">Source / Provenance</label>
+                  <select
+                    value={formData.provenanceId}
+                    onChange={(e) => setFormData({ ...formData, provenanceId: e.target.value })}
+                    className="w-full px-4 py-2.5 border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none"
+                  >
+                    <option value="">Sélectionner une source</option>
+                    {provenances.map(p => (
+                      <option key={p.id} value={p.id}>{p.name}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1.5">Localisation *</label>
+                  <input
+                    type="text"
+                    value={formData.location}
+                    onChange={(e) => setFormData({ ...formData, location: e.target.value })}
+                    placeholder="Lieu de l'événement"
+                    className="w-full px-4 py-2.5 border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1.5">Nom de l'initiateur</label>
+                  <input
+                    type="text"
+                    value={formData.initiatorName}
+                    onChange={(e) => setFormData({ ...formData, initiatorName: e.target.value })}
+                    placeholder="Nom complet"
+                    className="w-full px-4 py-2.5 border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1.5">Contact de l'initiateur</label>
+                  <input
+                    type="text"
+                    value={formData.initiatorContact}
+                    onChange={(e) => setFormData({ ...formData, initiatorContact: e.target.value })}
+                    placeholder="Téléphone ou email"
+                    className="w-full px-4 py-2.5 border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Transmission */}
+            <div className="bg-white rounded-2xl border border-slate-200 p-6">
+              <div className="flex items-center gap-3 mb-5">
+                <div className="p-2 rounded-xl bg-amber-100 text-amber-600">
+                  <Send className="w-5 h-5" />
+                </div>
+                <h3 className="font-semibold text-slate-800">Type de transmission</h3>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4 mb-6">
+                <button
+                  type="button"
+                  onClick={() => setFormData({ ...formData, transmissionType: 'MANUAL', procedureId: '' })}
+                  className={`p-4 rounded-xl border-2 text-left transition-all ${
+                    formData.transmissionType === 'MANUAL'
+                      ? 'border-emerald-500 bg-emerald-50'
+                      : 'border-slate-200 hover:border-slate-300'
+                  }`}
+                >
+                  <div className="flex items-center gap-3 mb-2">
+                    <Users className={`w-5 h-5 ${formData.transmissionType === 'MANUAL' ? 'text-emerald-600' : 'text-slate-400'}`} />
+                    <span className={`font-semibold ${formData.transmissionType === 'MANUAL' ? 'text-emerald-700' : 'text-slate-700'}`}>
+                      Manuel
+                    </span>
+                  </div>
+                  <p className="text-sm text-slate-500">Choisissez manuellement les destinataires et la durée de traitement</p>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setFormData({ ...formData, transmissionType: 'AUTOMATIC', manualRecipients: [] })}
+                  className={`p-4 rounded-xl border-2 text-left transition-all ${
+                    formData.transmissionType === 'AUTOMATIC'
+                      ? 'border-emerald-500 bg-emerald-50'
+                      : 'border-slate-200 hover:border-slate-300'
+                  }`}
+                >
+                  <div className="flex items-center gap-3 mb-2">
+                    <Zap className={`w-5 h-5 ${formData.transmissionType === 'AUTOMATIC' ? 'text-emerald-600' : 'text-slate-400'}`} />
+                    <span className={`font-semibold ${formData.transmissionType === 'AUTOMATIC' ? 'text-emerald-700' : 'text-slate-700'}`}>
+                      Automatique
+                    </span>
+                  </div>
+                  <p className="text-sm text-slate-500">Liez à une procédure existante pour un traitement automatisé</p>
+                </button>
+              </div>
+
+              {formData.transmissionType === 'AUTOMATIC' && (
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1.5">Procédure à suivre</label>
+                  <select
+                    value={formData.procedureId}
+                    onChange={(e) => setFormData({ ...formData, procedureId: e.target.value })}
+                    className="w-full px-4 py-2.5 border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none"
+                  >
+                    <option value="">Sélectionner une procédure</option>
+                    {procedures.filter(p => !formData.categoryId || p.categoryId === formData.categoryId).map(proc => (
+                      <option key={proc.id} value={proc.id}>{proc.name}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
+              {formData.transmissionType === 'MANUAL' && (
+                <div>
+                  <div className="flex items-center justify-between mb-3">
+                    <label className="text-sm font-medium text-slate-700">Destinataires et étapes</label>
+                    <button
+                      type="button"
+                      onClick={addManualRecipient}
+                      className="flex items-center gap-1 text-sm text-emerald-600 hover:text-emerald-700"
+                    >
+                      <Plus className="w-4 h-4" />
+                      Ajouter une étape
+                    </button>
+                  </div>
+
+                  {formData.manualRecipients.length === 0 && (
+                    <div className="text-center py-6 bg-slate-50 rounded-xl">
+                      <Users className="w-8 h-8 text-slate-300 mx-auto mb-2" />
+                      <p className="text-sm text-slate-500">Aucune étape configurée</p>
+                      <button
+                        type="button"
+                        onClick={addManualRecipient}
+                        className="mt-2 text-sm text-emerald-600 hover:text-emerald-700"
+                      >
+                        Ajouter une première étape
+                      </button>
+                    </div>
+                  )}
+
+                  <div className="space-y-3">
+                    {formData.manualRecipients.map((recipient, index) => (
+                      <div key={index} className="flex items-center gap-3 p-3 bg-slate-50 rounded-xl">
+                        <span className="w-8 h-8 flex items-center justify-center bg-emerald-100 text-emerald-600 rounded-full text-sm font-bold">
+                          {index + 1}
+                        </span>
+                        <select
+                          value={recipient.userId}
+                          onChange={(e) => {
+                            const updated = [...formData.manualRecipients]
+                            updated[index].userId = e.target.value
+                            setFormData({ ...formData, manualRecipients: updated })
+                          }}
+                          className="flex-1 px-3 py-2 border border-slate-200 rounded-lg text-sm"
+                        >
+                          <option value="">Sélectionner un destinataire</option>
+                          {users.map(user => (
+                            <option key={user.id} value={user.id}>{user.firstName} {user.lastName}</option>
+                          ))}
+                        </select>
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="number"
+                            value={recipient.duration}
+                            onChange={(e) => {
+                              const updated = [...formData.manualRecipients]
+                              updated[index].duration = parseInt(e.target.value) || 24
+                              setFormData({ ...formData, manualRecipients: updated })
+                            }}
+                            className="w-20 px-3 py-2 border border-slate-200 rounded-lg text-sm text-center"
+                            min={1}
+                          />
+                          <span className="text-sm text-slate-500">heures</span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => removeManualRecipient(index)}
+                          className="p-1.5 text-red-500 hover:bg-red-50 rounded-lg"
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Right Column - Attachments */}
+          <div className="space-y-6">
+            {/* Attachments */}
+            <div className="bg-white rounded-2xl border border-slate-200 p-6">
+              <div className="flex items-center gap-3 mb-5">
+                <div className="p-2 rounded-xl bg-rose-100 text-rose-600">
+                  <Paperclip className="w-5 h-5" />
+                </div>
+                <h3 className="font-semibold text-slate-800">Fichiers joints</h3>
+              </div>
+
+              <div className="border-2 border-dashed border-slate-200 rounded-xl p-6 text-center hover:border-emerald-300 transition-colors cursor-pointer">
+                <Upload className="w-8 h-8 text-slate-400 mx-auto mb-2" />
+                <p className="text-sm text-slate-600 font-medium">Glissez vos fichiers ici</p>
+                <p className="text-xs text-slate-400 mt-1">ou cliquez pour parcourir</p>
+                <input type="file" multiple className="hidden" />
+              </div>
+
+              {formData.attachments.length > 0 && (
+                <div className="mt-4 space-y-2">
+                  {formData.attachments.map((att, index) => (
+                    <div key={index} className="flex items-center justify-between p-3 bg-slate-50 rounded-lg">
+                      <div className="flex items-center gap-2 flex-1 min-w-0">
+                        <FileText className="w-4 h-4 text-slate-400 flex-shrink-0" />
+                        <span className="text-sm text-slate-700 truncate">{att.file.name}</span>
+                      </div>
+                      <select
+                        value={att.documentTypeId}
+                        onChange={(e) => {
+                          const updated = [...formData.attachments]
+                          updated[index].documentTypeId = e.target.value
+                          setFormData({ ...formData, attachments: updated })
+                        }}
+                        className="px-2 py-1 text-xs border border-slate-200 rounded-lg"
+                      >
+                        <option value="">Type de fichier</option>
+                        {documentTypes.map(dt => (
+                          <option key={dt.id} value={dt.id}>{dt.name}</option>
+                        ))}
+                      </select>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setFormData({
+                            ...formData,
+                            attachments: formData.attachments.filter((_, i) => i !== index)
+                          })
+                        }}
+                        className="p-1 text-red-500 hover:bg-red-50 rounded ml-2"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Quick Info */}
+            <div className="bg-gradient-to-br from-emerald-50 to-teal-50 rounded-2xl border border-emerald-200 p-6">
+              <div className="flex items-center gap-3 mb-4">
+                <AlertCircle className="w-5 h-5 text-emerald-600" />
+                <h3 className="font-semibold text-emerald-800">À savoir</h3>
+              </div>
+              <ul className="text-sm text-emerald-700 space-y-2">
+                <li className="flex items-start gap-2">
+                  <Check className="w-4 h-4 mt-0.5 flex-shrink-0" />
+                  <span>Les événements créés sont automatiquement assignés à vous</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <Check className="w-4 h-4 mt-0.5 flex-shrink-0" />
+                  <span>Le mode automatique suit les étapes définies dans la procédure</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <Check className="w-4 h-4 mt-0.5 flex-shrink-0" />
+                  <span>Vous pouvez joindre des fichiers de preuve</span>
+                </li>
+              </ul>
+            </div>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  // Detail View
+  if (currentView === 'detail' && selectedEvent) {
+    const statusConfig = STATUS_CONFIG[selectedEvent.status]
+    const severityConfig = SEVERITY_CONFIG[selectedEvent.severity]
+    const StatusIcon = statusConfig.icon
+
+    return (
+      <div className="p-6">
+        {/* Header */}
+        <div className="flex items-center justify-between mb-6">
+          <div className="flex items-center gap-4">
+            <button onClick={handleBack} className="p-2 hover:bg-slate-100 rounded-lg transition-colors">
+              <ArrowLeft className="w-5 h-5 text-slate-600" />
+            </button>
+            <div>
+              <div className="flex items-center gap-3">
+                <h1 className="text-2xl font-display font-bold text-slate-800">{selectedEvent.code}</h1>
+                <span className={`px-3 py-1 rounded-full text-sm font-medium ${statusConfig.lightBg} ${statusConfig.textColor}`}>
+                  {statusConfig.label}
+                </span>
+                <span className={`px-3 py-1 rounded-full text-sm font-medium ${severityConfig.bgColor} ${severityConfig.textColor}`}>
+                  {severityConfig.label}
+                </span>
+              </div>
+              <p className="text-slate-500 mt-1">{selectedEvent.title}</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-3">
+            {selectedEvent.status === 'REPORTED' && (
+              <button
+                onClick={() => handleChangeStatus(selectedEvent.id, 'INVESTIGATING')}
+                className="flex items-center gap-2 px-4 py-2.5 bg-amber-500 text-white rounded-xl hover:bg-amber-600 transition-colors"
+              >
+                <Play className="w-4 h-4" />
+                Prendre en charge
+              </button>
+            )}
+            {selectedEvent.status === 'INVESTIGATING' && (
+              <>
+                <button
+                  onClick={() => handleChangeStatus(selectedEvent.id, 'RESOLVED')}
+                  className="flex items-center gap-2 px-4 py-2.5 bg-emerald-500 text-white rounded-xl hover:bg-emerald-600 transition-colors"
+                >
+                  <CheckCircle className="w-4 h-4" />
+                  Marquer traité
+                </button>
+                <button
+                  onClick={() => {
+                    const reason = prompt('Raison du renvoi:')
+                    if (reason) handleChangeStatus(selectedEvent.id, 'REPORTED', reason)
+                  }}
+                  className="flex items-center gap-2 px-4 py-2.5 text-slate-600 hover:bg-slate-100 rounded-xl transition-colors"
+                >
+                  <RotateCcw className="w-4 h-4" />
+                  Renvoyer
+                </button>
+              </>
+            )}
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
+          {/* Main Content */}
+          <div className="xl:col-span-2 space-y-6">
+            {/* Details Card */}
+            <div className="bg-white rounded-2xl border border-slate-200 p-6">
+              <h3 className="font-semibold text-slate-800 mb-4">Détails de l'événement</h3>
+              <p className="text-slate-600 whitespace-pre-wrap">{selectedEvent.description || 'Aucune description'}</p>
+
+              <div className="grid grid-cols-2 gap-4 mt-6 pt-6 border-t border-slate-100">
+                <div>
+                  <p className="text-sm text-slate-500">Localisation</p>
+                  <p className="font-medium text-slate-800 flex items-center gap-2 mt-1">
+                    <MapPin className="w-4 h-4 text-slate-400" />
+                    {selectedEvent.location}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-sm text-slate-500">Catégorie</p>
+                  <p className="font-medium text-slate-800 flex items-center gap-2 mt-1">
+                    <span className="w-3 h-3 rounded-full" style={{ backgroundColor: selectedEvent.category?.color }} />
+                    {selectedEvent.category?.name}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-sm text-slate-500">Signalé par</p>
+                  <p className="font-medium text-slate-800 mt-1">
+                    {selectedEvent.reportedBy?.firstName} {selectedEvent.reportedBy?.lastName}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-sm text-slate-500">Date de signalement</p>
+                  <p className="font-medium text-slate-800 mt-1">
+                    {new Date(selectedEvent.reportedAt).toLocaleDateString('fr-FR', { dateStyle: 'long' })}
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Timeline */}
+            <div className="bg-white rounded-2xl border border-slate-200 p-6">
+              <h3 className="font-semibold text-slate-800 mb-4">Historique</h3>
+              <div className="space-y-4">
+                <div className="flex gap-4">
+                  <div className="flex flex-col items-center">
+                    <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center">
+                      <Clock className="w-4 h-4 text-blue-600" />
+                    </div>
+                    <div className="w-0.5 flex-1 bg-slate-200 my-2" />
+                  </div>
+                  <div className="flex-1 pb-4">
+                    <p className="font-medium text-slate-800">Événement créé</p>
+                    <p className="text-sm text-slate-500">{new Date(selectedEvent.createdAt).toLocaleString('fr-FR')}</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Sidebar */}
+          <div className="space-y-6">
+            {/* Assignment */}
+            <div className="bg-white rounded-2xl border border-slate-200 p-6">
+              <h3 className="font-semibold text-slate-800 mb-4">Assignation</h3>
+              {selectedEvent.assignedTo ? (
+                <div className="flex items-center gap-3 p-3 bg-slate-50 rounded-xl">
+                  <div className="w-10 h-10 rounded-full bg-emerald-100 flex items-center justify-center">
+                    <User className="w-5 h-5 text-emerald-600" />
+                  </div>
+                  <div>
+                    <p className="font-medium text-slate-800">
+                      {selectedEvent.assignedTo.firstName} {selectedEvent.assignedTo.lastName}
+                    </p>
+                    <p className="text-sm text-slate-500">{selectedEvent.assignedTo.email}</p>
+                  </div>
+                </div>
+              ) : (
+                <div className="text-center py-4">
+                  <p className="text-slate-500 text-sm">Non assigné</p>
+                  <select
+                    onChange={(e) => handleAssign(selectedEvent.id, e.target.value)}
+                    className="mt-2 px-3 py-2 border border-slate-200 rounded-lg text-sm"
+                  >
+                    <option value="">Assigner à...</option>
+                    {users.map(user => (
+                      <option key={user.id} value={user.id}>{user.firstName} {user.lastName}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+            </div>
+
+            {/* Attachments */}
+            <div className="bg-white rounded-2xl border border-slate-200 p-6">
+              <h3 className="font-semibold text-slate-800 mb-4">Pièces jointes ({selectedEvent.attachments?.length || 0})</h3>
+              {selectedEvent.attachments && selectedEvent.attachments.length > 0 ? (
+                <div className="space-y-2">
+                  {selectedEvent.attachments.map((att: any) => (
+                    <div key={att.id} className="flex items-center gap-3 p-3 bg-slate-50 rounded-xl hover:bg-slate-100 cursor-pointer">
+                      <FileText className="w-5 h-5 text-slate-400" />
+                      <span className="text-sm text-slate-700 truncate flex-1">{att.originalName}</span>
+                      <Download className="w-4 h-4 text-slate-400" />
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-center text-slate-500 text-sm py-4">Aucune pièce jointe</p>
+              )}
+            </div>
+
+            {/* Tasks */}
+            <div className="bg-white rounded-2xl border border-slate-200 p-6">
+              <h3 className="font-semibold text-slate-800 mb-4">Tâches ({selectedEvent.tasks?.length || 0})</h3>
+              {selectedEvent.tasks && selectedEvent.tasks.length > 0 ? (
+                <div className="space-y-2">
+                  {selectedEvent.tasks.map((task: any) => (
+                    <div key={task.id} className="flex items-center gap-3 p-3 bg-slate-50 rounded-xl">
+                      <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${
+                        task.status === 'COMPLETED' ? 'border-emerald-500 bg-emerald-500' : 'border-slate-300'
+                      }`}>
+                        {task.status === 'COMPLETED' && <Check className="w-3 h-3 text-white" />}
+                      </div>
+                      <span className={`text-sm flex-1 ${task.status === 'COMPLETED' ? 'text-slate-400 line-through' : 'text-slate-700'}`}>
+                        {task.title}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-center text-slate-500 text-sm py-4">Aucune tâche</p>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  // List View
+  if (currentView === 'list') {
+    const selectedCategory = categories.find(c => c.id === selectedCategoryId)
+
+    return (
+      <div className="p-6">
+        {/* Header */}
+        <div className="flex items-center justify-between mb-6">
+          <div className="flex items-center gap-4">
+            <button onClick={handleBack} className="p-2 hover:bg-slate-100 rounded-lg transition-colors">
+              <ArrowLeft className="w-5 h-5 text-slate-600" />
+            </button>
+            <div>
+              <div className="flex items-center gap-3">
+                <h1 className="text-2xl font-display font-bold text-slate-800">
+                  {selectedCategory?.name || 'Événements'}
+                </h1>
+                <span className={`px-3 py-1 rounded-full text-sm font-medium ${STATUS_CONFIG[selectedStatus as keyof typeof STATUS_CONFIG]?.lightBg} ${STATUS_CONFIG[selectedStatus as keyof typeof STATUS_CONFIG]?.textColor}`}>
+                  {STATUS_CONFIG[selectedStatus as keyof typeof STATUS_CONFIG]?.label}
+                </span>
+              </div>
+              <p className="text-slate-500 mt-1">{events.length} événement(s)</p>
+            </div>
+          </div>
+        </div>
+
+        {/* Events Grid */}
+        {loadingEvents ? (
+          <div className="flex items-center justify-center py-20">
+            <RefreshCw className="w-6 h-6 text-emerald-500 animate-spin" />
+          </div>
+        ) : events.length === 0 ? (
+          <div className="text-center py-20 bg-slate-50 rounded-2xl">
+            <Inbox className="w-12 h-12 text-slate-300 mx-auto mb-4" />
+            <p className="text-slate-500">Aucun événement dans cette catégorie</p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {events.map(event => {
+              const severityConfig = SEVERITY_CONFIG[event.severity]
+              return (
+                <div
+                  key={event.id}
+                  onClick={() => handleEventClick(event)}
+                  className="bg-white rounded-xl border border-slate-200 p-5 hover:shadow-lg hover:border-emerald-200 transition-all cursor-pointer group"
+                >
+                  <div className="flex items-start justify-between mb-3">
+                    <span className="text-xs font-mono text-slate-500">{event.code}</span>
+                    <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${severityConfig.bgColor} ${severityConfig.textColor}`}>
+                      {severityConfig.label}
+                    </span>
+                  </div>
+                  <h3 className="font-semibold text-slate-800 mb-2 line-clamp-2 group-hover:text-emerald-600 transition-colors">
+                    {event.title}
+                  </h3>
+                  <div className="flex items-center gap-2 text-sm text-slate-500">
+                    <MapPin className="w-4 h-4" />
+                    <span className="truncate">{event.location}</span>
+                  </div>
+                  <div className="flex items-center justify-between mt-4 pt-3 border-t border-slate-100">
+                    <div className="flex items-center gap-2">
+                      <div className="w-6 h-6 rounded-full bg-slate-200 flex items-center justify-center">
+                        <User className="w-3 h-3 text-slate-500" />
+                      </div>
+                      <span className="text-xs text-slate-500">
+                        {event.reportedBy?.firstName} {event.reportedBy?.lastName}
+                      </span>
+                    </div>
+                    <span className="text-xs text-slate-400">
+                      {new Date(event.reportedAt).toLocaleDateString('fr-FR')}
+                    </span>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        )}
+      </div>
+    )
+  }
+
+  // Dashboard View (default)
+  const statusTabs = [
+    { key: 'INVESTIGATING', ...STATUS_CONFIG.INVESTIGATING },
+    { key: 'REPORTED', ...STATUS_CONFIG.REPORTED },
+    { key: 'RESOLVED', ...STATUS_CONFIG.RESOLVED },
+    { key: 'CONFIRMED', ...STATUS_CONFIG.CONFIRMED },
+  ]
+
+  return (
+    <div className="p-6">
+      {/* Header */}
+      <div className="flex items-center justify-between mb-6">
+        <div>
+          <h1 className="text-2xl font-display font-bold text-slate-800">Événements sanitaires</h1>
+          <p className="text-slate-500 mt-1">Gérez et suivez les événements de santé animale</p>
+        </div>
+        <button
+          onClick={() => setCurrentView('form')}
+          className="flex items-center gap-2 px-5 py-2.5 bg-emerald-500 text-white rounded-xl hover:bg-emerald-600 transition-colors shadow-lg shadow-emerald-500/25"
+        >
+          <Plus className="w-5 h-5" />
+          Nouvel événement
+        </button>
+      </div>
+
+      {/* Status Tabs */}
+      <div className="flex gap-2 mb-8 overflow-x-auto pb-2">
+        {statusTabs.map(tab => {
+          const TabIcon = tab.icon
+          const count = getStatusCount(tab.key)
+          const isActive = selectedStatus === tab.key
+
+          return (
+            <button
+              key={tab.key}
+              onClick={() => handleStatusClick(tab.key)}
+              className={`flex items-center gap-3 px-5 py-3 rounded-xl transition-all whitespace-nowrap ${
+                isActive
+                  ? `${tab.bgColor} text-white shadow-lg`
+                  : 'bg-white border border-slate-200 text-slate-600 hover:border-slate-300'
+              }`}
+            >
+              <TabIcon className="w-5 h-5" />
+              <span className="font-medium">{tab.label}</span>
+              <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${
+                isActive ? 'bg-white/20' : 'bg-slate-100'
+              }`}>
+                {count}
+              </span>
+            </button>
+          )
+        })}
+      </div>
+
+      {/* Category Cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+        {categories.map(category => {
+          const categoryStats = stats?.byCategory.find(c => c.categoryId === category.id)
+          const count = categoryStats?.count || 0
+          const CategoryIcon = getCategoryIcon(category.icon)
+
+          return (
+            <div
+              key={category.id}
+              onClick={() => handleCategoryClick(category.id)}
+              className="bg-white rounded-2xl border border-slate-200 p-5 hover:shadow-xl hover:border-emerald-200 transition-all cursor-pointer group"
+            >
+              <div className="flex items-start justify-between mb-4">
+                <div
+                  className="w-12 h-12 rounded-xl flex items-center justify-center"
+                  style={{ backgroundColor: category.color + '20' }}
+                >
+                  <CategoryIcon className="w-6 h-6" style={{ color: category.color }} />
+                </div>
+                <div className="text-right">
+                  <p className="text-3xl font-bold text-slate-800">{count}</p>
+                  <p className="text-xs text-slate-500">événement(s)</p>
+                </div>
+              </div>
+              <h3 className="font-semibold text-slate-800 group-hover:text-emerald-600 transition-colors">
+                {category.name}
+              </h3>
+              {category.description && (
+                <p className="text-sm text-slate-500 mt-1 line-clamp-2">{category.description}</p>
+              )}
+              <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between">
+                <span className="text-xs text-slate-400">Voir les détails</span>
+                <ChevronRight className="w-4 h-4 text-slate-400 group-hover:text-emerald-500 group-hover:translate-x-1 transition-all" />
+              </div>
+            </div>
+          )
+        })}
+
+        {categories.length === 0 && (
+          <div className="col-span-full text-center py-20 bg-slate-50 rounded-2xl">
+            <Folder className="w-12 h-12 text-slate-300 mx-auto mb-4" />
+            <p className="text-slate-500">Aucune catégorie d'événement configurée</p>
+          </div>
+        )}
+      </div>
+
+      {/* Stats Summary */}
+      {stats && (
+        <div className="mt-8 grid grid-cols-2 md:grid-cols-4 gap-4">
+          {Object.entries(SEVERITY_CONFIG).map(([key, config]) => (
+            <div key={key} className="bg-white rounded-xl border border-slate-200 p-4">
+              <div className="flex items-center justify-between">
+                <span className={`px-2 py-1 rounded-full text-xs font-medium ${config.bgColor} ${config.textColor}`}>
+                  {config.label}
+                </span>
+                <span className="text-2xl font-bold text-slate-800">
+                  {stats.bySeverity[key as keyof typeof stats.bySeverity]}
+                </span>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   )
 }
@@ -7287,7 +13600,7 @@ function App() {
       <div className={`transition-all duration-300 ${sidebarCollapsed ? 'lg:ml-16' : 'lg:ml-[270px]'}`}>
         <Header onMenuToggle={() => setMobileMenuOpen(true)} currentPage={currentPage} onLogout={handleLogout} onProfileClick={() => setCurrentPage('my-profile')} userSession={userSession} />
         <main className="p-4 lg:p-8">
-          {currentPage === 'dashboard' && <Dashboard userSession={userSession} />}
+          {currentPage === 'dashboard' && <Dashboard userSession={userSession} onNavigate={setCurrentPage} />}
           {currentPage === 'my-profile' && <MyProfilePage userSession={userSession} onUpdateSession={setUserSession} />}
           {currentPage === 'users-management' && <UsersManagementPage />}
           {currentPage === 'users-groups' && <GroupsManagementPage />}
@@ -7295,7 +13608,18 @@ function App() {
           {currentPage === 'settings-forms' && <FormBuilderPage />}
           {currentPage === 'settings-procedures' && <ProceduresPage />}
           {currentPage === 'settings-categories' && <EventCategoriesPage />}
-          {!['dashboard', 'my-profile', 'users-management', 'users-groups', 'users-rights', 'settings-forms', 'settings-procedures', 'settings-categories'].includes(currentPage) && (
+          {currentPage === 'settings-doctypes' && <DocumentTypesPage />}
+          {currentPage === 'settings-origins' && <EventProvenancesPage />}
+          {currentPage === 'knowledge' && <KnowledgeBasePage />}
+          {currentPage === 'config-schedule' && <WorkSchedulesPage />}
+          {currentPage === 'config-system' && <SystemConfigPage />}
+          {currentPage === 'analytics' && <AnalyticsPage />}
+          {currentPage === 'notifications' && <NotificationsPage />}
+          {currentPage === 'events-inprogress' && <EventsPage initialStatus="INVESTIGATING" />}
+          {currentPage === 'events-received' && <EventsPage initialStatus="REPORTED" />}
+          {currentPage === 'events-processed' && <EventsPage initialStatus="RESOLVED" />}
+          {currentPage === 'events-scheduled' && <EventsPage initialStatus="CONFIRMED" />}
+          {!['dashboard', 'my-profile', 'users-management', 'users-groups', 'users-rights', 'settings-forms', 'settings-procedures', 'settings-categories', 'settings-doctypes', 'settings-origins', 'knowledge', 'config-schedule', 'config-system', 'analytics', 'notifications', 'events-inprogress', 'events-received', 'events-processed', 'events-scheduled'].includes(currentPage) && (
             <PlaceholderPage title={pageTitles[currentPage] || currentPage} />
           )}
         </main>

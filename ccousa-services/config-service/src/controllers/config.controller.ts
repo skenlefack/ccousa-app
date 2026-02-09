@@ -236,6 +236,76 @@ export class ConfigController {
   }
 
   // ===========================================
+  // Event Provenances (Origins)
+  // ===========================================
+
+  async getEventProvenances(req: Request, res: Response): Promise<void> {
+    try {
+      const includeInactive = req.query.includeInactive === 'true';
+      const provenances = await configService.getEventProvenances(includeInactive);
+      res.json({ success: true, data: provenances });
+    } catch (error) {
+      logger.error('Erreur getEventProvenances:', error);
+      res.status(500).json({ success: false, message: 'Erreur interne' });
+    }
+  }
+
+  async getEventProvenanceById(req: Request, res: Response): Promise<void> {
+    try {
+      const { id } = req.params;
+      const provenance = await configService.getEventProvenanceById(id);
+      res.json({ success: true, data: provenance });
+    } catch (error) {
+      const err = error as Error;
+      if (err.message === 'PROVENANCE_NOT_FOUND') {
+        res.status(404).json({ success: false, message: 'Provenance non trouvée' });
+        return;
+      }
+      res.status(500).json({ success: false, message: 'Erreur interne' });
+    }
+  }
+
+  async createEventProvenance(req: Request, res: Response): Promise<void> {
+    try {
+      const provenance = await configService.createEventProvenance(req.body);
+      res.status(201).json({ success: true, data: provenance });
+    } catch (error) {
+      logger.error('Erreur createEventProvenance:', error);
+      res.status(500).json({ success: false, message: 'Erreur interne' });
+    }
+  }
+
+  async updateEventProvenance(req: Request, res: Response): Promise<void> {
+    try {
+      const { id } = req.params;
+      const provenance = await configService.updateEventProvenance(id, req.body);
+      res.json({ success: true, data: provenance });
+    } catch (error) {
+      const err = error as Error;
+      if (err.message === 'PROVENANCE_NOT_FOUND') {
+        res.status(404).json({ success: false, message: 'Provenance non trouvée' });
+        return;
+      }
+      res.status(500).json({ success: false, message: 'Erreur interne' });
+    }
+  }
+
+  async deleteEventProvenance(req: Request, res: Response): Promise<void> {
+    try {
+      const { id } = req.params;
+      await configService.deleteEventProvenance(id);
+      res.json({ success: true, message: 'Provenance supprimée' });
+    } catch (error) {
+      const err = error as Error;
+      if (err.message === 'PROVENANCE_NOT_FOUND') {
+        res.status(404).json({ success: false, message: 'Provenance non trouvée' });
+        return;
+      }
+      res.status(500).json({ success: false, message: 'Erreur interne' });
+    }
+  }
+
+  // ===========================================
   // Organizational Units
   // ===========================================
 
@@ -361,7 +431,16 @@ export class ConfigController {
   async updateWorkSchedule(req: Request, res: Response): Promise<void> {
     try {
       const { id } = req.params;
-      const schedule = await configService.updateWorkSchedule(id, req.body);
+      const { days, ...scheduleData } = req.body;
+
+      // Update main schedule data
+      let schedule = await configService.updateWorkSchedule(id, scheduleData);
+
+      // If days are provided, update them too
+      if (Array.isArray(days) && days.length > 0) {
+        schedule = await configService.updateWorkScheduleDays(id, days);
+      }
+
       res.json({ success: true, data: schedule });
     } catch (error) {
       const err = error as Error;
@@ -369,6 +448,7 @@ export class ConfigController {
         res.status(404).json({ success: false, message: 'Horaire non trouvé' });
         return;
       }
+      logger.error('Erreur updateWorkSchedule:', error);
       res.status(500).json({ success: false, message: 'Erreur interne' });
     }
   }

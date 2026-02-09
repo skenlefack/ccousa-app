@@ -29,6 +29,13 @@ interface UpdateProcedureDto {
   isActive?: boolean;
 }
 
+interface StepOperation {
+  name: string;
+  description?: string;
+  formId?: string;
+  sortOrder?: number;
+}
+
 interface CreateStepDto {
   name: string;
   description?: string;
@@ -40,6 +47,7 @@ interface CreateStepDto {
   formId?: string;
   requiredDocumentIds?: string[];
   externalStepId?: string;
+  operations?: StepOperation[];
 }
 
 interface UpdateStepDto extends Partial<CreateStepDto> {}
@@ -317,6 +325,29 @@ export class ProceduresService {
     return { id };
   }
 
+  // Restore procedure
+  async restore(id: string) {
+    const result = await query(
+      'UPDATE procedures SET is_active = true, updated_at = NOW() WHERE id = $1 RETURNING id',
+      [id]
+    );
+    if (result.rows.length === 0) throw new Error('PROCEDURE_NOT_FOUND');
+    logger.info(`Procédure restaurée: ${id}`);
+    return { id };
+  }
+
+  // Delete procedure permanently (hard delete)
+  async deletePermanent(id: string) {
+    // First delete steps (cascade should handle this, but being explicit)
+    await query('DELETE FROM procedure_steps WHERE procedure_id = $1', [id]);
+
+    // Then delete the procedure
+    const result = await query('DELETE FROM procedures WHERE id = $1 RETURNING id', [id]);
+    if (result.rows.length === 0) throw new Error('PROCEDURE_NOT_FOUND');
+    logger.info(`Procédure supprimée définitivement: ${id}`);
+    return { id };
+  }
+
   // Duplicate procedure
   async duplicate(id: string, newName: string, userId: string) {
     const original = await this.findById(id);
@@ -504,6 +535,7 @@ export class ProceduresService {
         form_id as "formId",
         required_document_ids as "requiredDocumentIds",
         external_step_id as "externalStepId",
+        operations,
         created_at as "createdAt",
         updated_at as "updatedAt"
       FROM procedure_steps
@@ -542,16 +574,18 @@ export class ProceduresService {
   async createStep(procedureId: string, data: CreateStepDto) {
     const result = await query(
       `INSERT INTO procedure_steps (
-        procedure_id, name, description, step_number, duration_hours,
+        procedure_id, name, description, step_number, step_order, step_type, duration_hours,
         is_optional, assignee_type, assignee_id, form_id,
-        required_document_ids, external_step_id
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+        required_document_ids, external_step_id, operations
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
       RETURNING *`,
       [
         procedureId, data.name, data.description || null, data.stepNumber,
+        data.stepNumber, 'TASK', // step_order = stepNumber, step_type = TASK by default
         data.durationHours || null, data.isOptional || false,
-        data.assigneeType, data.assigneeId || null, data.formId || null,
-        data.requiredDocumentIds || null, data.externalStepId || null
+        data.assigneeType || 'AUTO', data.assigneeId || null, data.formId || null,
+        data.requiredDocumentIds || null, data.externalStepId || null,
+        JSON.stringify(data.operations || [])
       ]
     );
     return result.rows[0];
