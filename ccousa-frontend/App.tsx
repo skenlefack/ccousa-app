@@ -12250,6 +12250,35 @@ interface DocumentTypeData {
   name: string
 }
 
+interface StepExecutionData {
+  id: string
+  executionId: string
+  stepId: string
+  stepNumber: number
+  status: 'PENDING' | 'IN_PROGRESS' | 'COMPLETED' | 'SKIPPED'
+  assignedToId?: string
+  startedAt?: string
+  completedAt?: string
+  completedById?: string
+  notes?: string
+  step: { id: string; name: string; description?: string }
+}
+
+interface ProcedureExecutionData {
+  id: string
+  procedureId: string
+  eventId: string
+  status: 'PENDING' | 'IN_PROGRESS' | 'COMPLETED' | 'CANCELLED'
+  currentStepNumber: number
+  startedById: string
+  startedAt: string
+  completedAt?: string
+  cancelledAt?: string
+  cancelReason?: string
+  procedure: { id: string; name: string; code: string; type: string }
+  stepExecutions?: StepExecutionData[]
+}
+
 const STATUS_CONFIG = {
   REPORTED: { label: 'Reçu', color: 'blue', icon: Inbox, bgColor: 'bg-blue-500', lightBg: 'bg-blue-50', textColor: 'text-blue-600' },
   INVESTIGATING: { label: 'En cours', color: 'amber', icon: Clock, bgColor: 'bg-amber-500', lightBg: 'bg-amber-50', textColor: 'text-amber-600' },
@@ -12366,6 +12395,12 @@ function EventsPage({ initialStatus = 'INVESTIGATING' }: { initialStatus?: strin
   const [documentTypes, setDocumentTypes] = useState<DocumentTypeData[]>([])
   const [provenances, setProvenances] = useState<any[]>([])
 
+  // Procedure executions state
+  const [procedureExecutions, setProcedureExecutions] = useState<ProcedureExecutionData[]>([])
+  const [loadingProcedure, setLoadingProcedure] = useState(false)
+  const [showProcedureModal, setShowProcedureModal] = useState(false)
+  const [selectedProcedureId, setSelectedProcedureId] = useState<string>('')
+
   // Loading states
   const [loading, setLoading] = useState(true)
   const [loadingEvents, setLoadingEvents] = useState(false)
@@ -12466,9 +12501,164 @@ function EventsPage({ initialStatus = 'INVESTIGATING' }: { initialStatus?: strin
       if (response.ok) {
         const data = await response.json()
         setSelectedEvent(data.data)
+        // Also load procedure executions for this event
+        loadProcedureExecutions(eventId)
       }
     } catch (error) {
       console.error('Error loading event details:', error)
+    }
+  }
+
+  // Load procedure executions for an event
+  const loadProcedureExecutions = async (eventId: string) => {
+    try {
+      const response = await fetch(`${API_URL}/api/procedures/events/${eventId}/procedures`, { headers: getHeaders() })
+      if (response.ok) {
+        const data = await response.json()
+        setProcedureExecutions(data.data || [])
+      }
+    } catch (error) {
+      console.error('Error loading procedure executions:', error)
+      setProcedureExecutions([])
+    }
+  }
+
+  // Start a procedure execution for the current event
+  const startProcedureExecution = async (procedureId: string) => {
+    if (!selectedEvent) return
+
+    try {
+      setLoadingProcedure(true)
+      const response = await fetch(`${API_URL}/api/procedures/executions/start`, {
+        method: 'POST',
+        headers: getHeaders(),
+        body: JSON.stringify({ procedureId, eventId: selectedEvent.id })
+      })
+
+      if (response.ok) {
+        setShowProcedureModal(false)
+        setSelectedProcedureId('')
+        loadProcedureExecutions(selectedEvent.id)
+      } else {
+        const errorData = await response.json()
+        alert(`Erreur: ${errorData.message || 'Impossible de démarrer la procédure'}`)
+      }
+    } catch (error) {
+      console.error('Error starting procedure execution:', error)
+      alert('Erreur réseau lors du démarrage de la procédure')
+    } finally {
+      setLoadingProcedure(false)
+    }
+  }
+
+  // Load execution details with steps
+  const loadExecutionDetails = async (executionId: string) => {
+    try {
+      const response = await fetch(`${API_URL}/api/procedures/executions/${executionId}`, { headers: getHeaders() })
+      if (response.ok) {
+        const data = await response.json()
+        // Update the execution in the list with full details
+        setProcedureExecutions(prev => prev.map(exec =>
+          exec.id === executionId ? data.data : exec
+        ))
+      }
+    } catch (error) {
+      console.error('Error loading execution details:', error)
+    }
+  }
+
+  // Complete a step
+  const completeStep = async (executionId: string, stepExecutionId: string, notes?: string) => {
+    try {
+      setLoadingProcedure(true)
+      const response = await fetch(`${API_URL}/api/procedures/executions/${executionId}/steps/${stepExecutionId}/complete`, {
+        method: 'PUT',
+        headers: getHeaders(),
+        body: JSON.stringify({ notes })
+      })
+
+      if (response.ok) {
+        loadExecutionDetails(executionId)
+      } else {
+        alert('Erreur lors de la complétion de l\'étape')
+      }
+    } catch (error) {
+      console.error('Error completing step:', error)
+    } finally {
+      setLoadingProcedure(false)
+    }
+  }
+
+  // Skip a step
+  const skipStep = async (executionId: string, stepExecutionId: string) => {
+    const reason = prompt('Raison du saut de cette étape:')
+    if (!reason) return
+
+    try {
+      setLoadingProcedure(true)
+      const response = await fetch(`${API_URL}/api/procedures/executions/${executionId}/steps/${stepExecutionId}/skip`, {
+        method: 'PUT',
+        headers: getHeaders(),
+        body: JSON.stringify({ reason })
+      })
+
+      if (response.ok) {
+        loadExecutionDetails(executionId)
+      } else {
+        alert('Erreur lors du saut de l\'étape')
+      }
+    } catch (error) {
+      console.error('Error skipping step:', error)
+    } finally {
+      setLoadingProcedure(false)
+    }
+  }
+
+  // Advance to next step
+  const advanceExecution = async (executionId: string) => {
+    try {
+      setLoadingProcedure(true)
+      const response = await fetch(`${API_URL}/api/procedures/executions/${executionId}/advance`, {
+        method: 'PUT',
+        headers: getHeaders(),
+        body: JSON.stringify({})
+      })
+
+      if (response.ok) {
+        loadExecutionDetails(executionId)
+        if (selectedEvent) loadProcedureExecutions(selectedEvent.id)
+      } else {
+        alert('Erreur lors de l\'avancement de la procédure')
+      }
+    } catch (error) {
+      console.error('Error advancing execution:', error)
+    } finally {
+      setLoadingProcedure(false)
+    }
+  }
+
+  // Cancel execution
+  const cancelExecution = async (executionId: string) => {
+    const reason = prompt('Raison de l\'annulation:')
+    if (!reason) return
+
+    try {
+      setLoadingProcedure(true)
+      const response = await fetch(`${API_URL}/api/procedures/executions/${executionId}/cancel`, {
+        method: 'PUT',
+        headers: getHeaders(),
+        body: JSON.stringify({ reason })
+      })
+
+      if (response.ok) {
+        if (selectedEvent) loadProcedureExecutions(selectedEvent.id)
+      } else {
+        alert('Erreur lors de l\'annulation')
+      }
+    } catch (error) {
+      console.error('Error cancelling execution:', error)
+    } finally {
+      setLoadingProcedure(false)
     }
   }
 
@@ -13234,8 +13424,216 @@ function EventsPage({ initialStatus = 'INVESTIGATING' }: { initialStatus?: strin
                 <p className="text-center text-slate-500 text-sm py-4">Aucune tâche</p>
               )}
             </div>
+
+            {/* Procedure Executions */}
+            <div className="bg-white rounded-2xl border border-slate-200 p-6">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="font-semibold text-slate-800">Procédures</h3>
+                <button
+                  onClick={() => setShowProcedureModal(true)}
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-emerald-50 text-emerald-600 rounded-lg hover:bg-emerald-100 transition-colors"
+                >
+                  <Play className="w-3.5 h-3.5" />
+                  Démarrer
+                </button>
+              </div>
+
+              {procedureExecutions.length > 0 ? (
+                <div className="space-y-3">
+                  {procedureExecutions.map(execution => {
+                    const statusColors: Record<string, { bg: string; text: string; icon: React.ComponentType<{ className?: string }> }> = {
+                      IN_PROGRESS: { bg: 'bg-amber-100', text: 'text-amber-700', icon: Clock },
+                      COMPLETED: { bg: 'bg-emerald-100', text: 'text-emerald-700', icon: CheckCircle },
+                      CANCELLED: { bg: 'bg-red-100', text: 'text-red-700', icon: X },
+                      PENDING: { bg: 'bg-slate-100', text: 'text-slate-700', icon: Clock },
+                    }
+                    const statusConfig = statusColors[execution.status] || statusColors.PENDING
+                    const StatusIcon = statusConfig.icon
+
+                    return (
+                      <div key={execution.id} className="p-4 bg-slate-50 rounded-xl">
+                        <div className="flex items-start justify-between mb-2">
+                          <div>
+                            <p className="font-medium text-slate-800 text-sm">{execution.procedure?.name}</p>
+                            <p className="text-xs text-slate-500">{execution.procedure?.code}</p>
+                          </div>
+                          <span className={`flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${statusConfig.bg} ${statusConfig.text}`}>
+                            <StatusIcon className="w-3 h-3" />
+                            {execution.status === 'IN_PROGRESS' ? 'En cours' :
+                             execution.status === 'COMPLETED' ? 'Terminée' :
+                             execution.status === 'CANCELLED' ? 'Annulée' : 'En attente'}
+                          </span>
+                        </div>
+
+                        {/* Step Progress */}
+                        {execution.stepExecutions && execution.stepExecutions.length > 0 && (
+                          <div className="mt-3 space-y-2">
+                            {execution.stepExecutions.map((step, idx) => {
+                              const isActive = step.status === 'IN_PROGRESS'
+                              const isCompleted = step.status === 'COMPLETED'
+                              const isSkipped = step.status === 'SKIPPED'
+
+                              return (
+                                <div key={step.id} className={`flex items-center gap-3 p-2 rounded-lg ${
+                                  isActive ? 'bg-amber-50 border border-amber-200' :
+                                  isCompleted ? 'bg-emerald-50' :
+                                  isSkipped ? 'bg-slate-100' : 'bg-white'
+                                }`}>
+                                  <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${
+                                    isCompleted ? 'bg-emerald-500 text-white' :
+                                    isSkipped ? 'bg-slate-400 text-white' :
+                                    isActive ? 'bg-amber-500 text-white animate-pulse' :
+                                    'bg-slate-200 text-slate-500'
+                                  }`}>
+                                    {isCompleted ? <Check className="w-3.5 h-3.5" /> :
+                                     isSkipped ? <Minus className="w-3.5 h-3.5" /> :
+                                     step.stepNumber}
+                                  </div>
+                                  <div className="flex-1 min-w-0">
+                                    <p className={`text-sm truncate ${
+                                      isCompleted || isSkipped ? 'text-slate-500' : 'text-slate-700'
+                                    }`}>
+                                      {step.step?.name}
+                                    </p>
+                                  </div>
+
+                                  {/* Step actions for active step */}
+                                  {isActive && execution.status === 'IN_PROGRESS' && (
+                                    <div className="flex items-center gap-1">
+                                      <button
+                                        onClick={() => completeStep(execution.id, step.id)}
+                                        disabled={loadingProcedure}
+                                        className="p-1.5 bg-emerald-500 text-white rounded hover:bg-emerald-600 transition-colors disabled:opacity-50"
+                                        title="Terminer"
+                                      >
+                                        <Check className="w-3 h-3" />
+                                      </button>
+                                      <button
+                                        onClick={() => skipStep(execution.id, step.id)}
+                                        disabled={loadingProcedure}
+                                        className="p-1.5 bg-slate-400 text-white rounded hover:bg-slate-500 transition-colors disabled:opacity-50"
+                                        title="Sauter"
+                                      >
+                                        <ChevronRight className="w-3 h-3" />
+                                      </button>
+                                    </div>
+                                  )}
+                                </div>
+                              )
+                            })}
+                          </div>
+                        )}
+
+                        {/* Load steps button if not loaded */}
+                        {!execution.stepExecutions && execution.status === 'IN_PROGRESS' && (
+                          <button
+                            onClick={() => loadExecutionDetails(execution.id)}
+                            className="w-full mt-3 py-2 text-sm text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors"
+                          >
+                            Voir les étapes
+                          </button>
+                        )}
+
+                        {/* Execution actions */}
+                        {execution.status === 'IN_PROGRESS' && (
+                          <div className="mt-3 pt-3 border-t border-slate-200 flex gap-2">
+                            <button
+                              onClick={() => advanceExecution(execution.id)}
+                              disabled={loadingProcedure}
+                              className="flex-1 flex items-center justify-center gap-1.5 py-2 text-sm bg-emerald-500 text-white rounded-lg hover:bg-emerald-600 transition-colors disabled:opacity-50"
+                            >
+                              {loadingProcedure ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <ChevronRight className="w-3.5 h-3.5" />}
+                              Étape suivante
+                            </button>
+                            <button
+                              onClick={() => cancelExecution(execution.id)}
+                              disabled={loadingProcedure}
+                              className="px-3 py-2 text-sm text-red-600 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-50"
+                            >
+                              Annuler
+                            </button>
+                          </div>
+                        )}
+
+                        {/* Completion info */}
+                        {execution.completedAt && (
+                          <p className="mt-2 text-xs text-slate-500">
+                            Terminée le {new Date(execution.completedAt).toLocaleDateString('fr-FR')}
+                          </p>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+              ) : (
+                <div className="text-center py-6">
+                  <ClipboardList className="w-10 h-10 text-slate-300 mx-auto mb-2" />
+                  <p className="text-slate-500 text-sm">Aucune procédure en cours</p>
+                  <p className="text-slate-400 text-xs mt-1">Cliquez sur "Démarrer" pour lancer une procédure</p>
+                </div>
+              )}
+            </div>
           </div>
         </div>
+
+        {/* Modal: Select Procedure to Start */}
+        {showProcedureModal && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-2xl shadow-xl max-w-md w-full p-6 animate-slide-up">
+              <div className="flex items-center justify-between mb-6">
+                <h3 className="text-lg font-semibold text-slate-800">Démarrer une procédure</h3>
+                <button
+                  onClick={() => { setShowProcedureModal(false); setSelectedProcedureId(''); }}
+                  className="p-2 hover:bg-slate-100 rounded-lg transition-colors"
+                >
+                  <X className="w-5 h-5 text-slate-500" />
+                </button>
+              </div>
+
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1.5">Sélectionnez une procédure</label>
+                  <select
+                    value={selectedProcedureId}
+                    onChange={(e) => setSelectedProcedureId(e.target.value)}
+                    className="w-full px-4 py-2.5 border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none"
+                  >
+                    <option value="">-- Choisir une procédure --</option>
+                    {procedures.map(proc => (
+                      <option key={proc.id} value={proc.id}>{proc.name} ({proc.code})</option>
+                    ))}
+                  </select>
+                </div>
+
+                {selectedProcedureId && (
+                  <div className="p-4 bg-slate-50 rounded-xl">
+                    <p className="text-sm text-slate-600">
+                      La procédure sélectionnée sera démarrée pour cet événement.
+                      Vous pourrez suivre et compléter chaque étape.
+                    </p>
+                  </div>
+                )}
+              </div>
+
+              <div className="flex gap-3 mt-6">
+                <button
+                  onClick={() => { setShowProcedureModal(false); setSelectedProcedureId(''); }}
+                  className="flex-1 px-4 py-2.5 text-slate-600 hover:bg-slate-100 rounded-xl transition-colors"
+                >
+                  Annuler
+                </button>
+                <button
+                  onClick={() => startProcedureExecution(selectedProcedureId)}
+                  disabled={!selectedProcedureId || loadingProcedure}
+                  className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 bg-emerald-500 text-white rounded-xl hover:bg-emerald-600 transition-colors disabled:opacity-50"
+                >
+                  {loadingProcedure ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}
+                  Démarrer
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     )
   }
