@@ -851,7 +851,7 @@ const statusColors: Record<UserStatus, { bg: string; dot: string; ring: string }
 /* ============================================
    HEADER
    ============================================ */
-function Header({ onMenuToggle, currentPage, onLogout, onProfileClick, onNotificationsClick, userSession }: { onMenuToggle: () => void; currentPage: string; onLogout: () => void; onProfileClick: () => void; onNotificationsClick: () => void; userSession: UserSession | null }) {
+function Header({ onMenuToggle, currentPage, onLogout, onProfileClick, onNotificationsClick, onNavigate, userSession }: { onMenuToggle: () => void; currentPage: string; onLogout: () => void; onProfileClick: () => void; onNotificationsClick: () => void; onNavigate: (page: string) => void; userSession: UserSession | null }) {
   const { t } = useTranslation()
   const [userMenuOpen, setUserMenuOpen] = useState(false)
   const [userStatus, setUserStatus] = useState<UserStatus>('available')
@@ -860,6 +860,19 @@ function Header({ onMenuToggle, currentPage, onLogout, onProfileClick, onNotific
   const [unreadCount, setUnreadCount] = useState(0)
   const menuRef = useRef<HTMLDivElement>(null)
   const notifRef = useRef<HTMLDivElement>(null)
+
+  // Global search state
+  const [searchQuery, setSearchQuery] = useState('')
+  const [searchOpen, setSearchOpen] = useState(false)
+  const [searchLoading, setSearchLoading] = useState(false)
+  const [searchResults, setSearchResults] = useState<{
+    events: { id: string; code: string; title: string; status: string }[]
+    users: { id: string; firstName: string; lastName: string; email: string }[]
+    procedures: { id: string; code: string; name: string }[]
+    articles: { id: string; title: string; category: string }[]
+  }>({ events: [], users: [], procedures: [], articles: [] })
+  const searchRef = useRef<HTMLDivElement>(null)
+  const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null)
 
   const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 
@@ -963,6 +976,80 @@ function Header({ onMenuToggle, currentPage, onLogout, onProfileClick, onNotific
     return `Il y a ${diffDays}j`
   }
 
+  // Global search function with debounce
+  const performSearch = async (query: string) => {
+    if (query.length < 2) {
+      setSearchResults({ events: [], users: [], procedures: [], articles: [] })
+      return
+    }
+
+    setSearchLoading(true)
+    try {
+      const [eventsRes, usersRes, proceduresRes, articlesRes] = await Promise.all([
+        fetch(`${API_URL}/api/events?search=${encodeURIComponent(query)}&pageSize=5`, { headers: getAuthHeaders() }),
+        fetch(`${API_URL}/api/users?search=${encodeURIComponent(query)}&pageSize=5`, { headers: getAuthHeaders() }),
+        fetch(`${API_URL}/api/procedures?search=${encodeURIComponent(query)}&pageSize=5`, { headers: getAuthHeaders() }),
+        fetch(`${API_URL}/api/knowledge/search?q=${encodeURIComponent(query)}&limit=5`, { headers: getAuthHeaders() }),
+      ])
+
+      const results = { events: [], users: [], procedures: [], articles: [] } as typeof searchResults
+
+      if (eventsRes.ok) {
+        const data = await eventsRes.json()
+        results.events = (data.data?.items || data.data || []).slice(0, 5)
+      }
+      if (usersRes.ok) {
+        const data = await usersRes.json()
+        results.users = (data.data?.items || data.data || []).slice(0, 5)
+      }
+      if (proceduresRes.ok) {
+        const data = await proceduresRes.json()
+        results.procedures = (data.data?.items || data.data || []).slice(0, 5)
+      }
+      if (articlesRes.ok) {
+        const data = await articlesRes.json()
+        results.articles = (data.data?.items || data.data || []).slice(0, 5)
+      }
+
+      setSearchResults(results)
+    } catch (error) {
+      console.error('Search error:', error)
+    } finally {
+      setSearchLoading(false)
+    }
+  }
+
+  // Handle search input change with debounce
+  const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const query = e.target.value
+    setSearchQuery(query)
+    setSearchOpen(query.length > 0)
+
+    // Clear previous timeout
+    if (searchTimeoutRef.current) {
+      clearTimeout(searchTimeoutRef.current)
+    }
+
+    // Debounce search
+    searchTimeoutRef.current = setTimeout(() => {
+      performSearch(query)
+    }, 300)
+  }
+
+  // Close search on click outside
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (searchRef.current && !searchRef.current.contains(event.target as Node)) {
+        setSearchOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [])
+
+  // Get total search results count
+  const totalResults = searchResults.events.length + searchResults.users.length + searchResults.procedures.length + searchResults.articles.length
+
   // Données utilisateur depuis la session
   const currentUser = {
     name: userSession ? `${userSession.firstName} ${userSession.lastName}` : 'Utilisateur',
@@ -1018,7 +1105,173 @@ function Header({ onMenuToggle, currentPage, onLogout, onProfileClick, onNotific
           <button onClick={onMenuToggle} className="lg:hidden p-2.5 hover:bg-slate-100 rounded-xl">
             <Menu className="w-5 h-5 text-slate-600" />
           </button>
-          <h1 className="text-xl font-display font-bold text-slate-800">{titles[currentPage] || t('header.dashboard')}</h1>
+          <h1 className="text-xl font-display font-bold text-slate-800 hidden sm:block">{titles[currentPage] || t('header.dashboard')}</h1>
+        </div>
+
+        {/* Global Search */}
+        <div className="relative flex-1 max-w-md mx-4 hidden md:block" ref={searchRef}>
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={handleSearchChange}
+              onFocus={() => searchQuery.length > 0 && setSearchOpen(true)}
+              placeholder="Rechercher événements, utilisateurs, procédures..."
+              className="w-full pl-10 pr-4 py-2.5 bg-slate-100 border border-transparent rounded-xl text-sm text-slate-700 placeholder-slate-400 focus:bg-white focus:border-emerald-300 focus:ring-2 focus:ring-emerald-500/20 outline-none transition-all"
+            />
+            {searchLoading && (
+              <RefreshCw className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 animate-spin" />
+            )}
+          </div>
+
+          {/* Search Results Dropdown */}
+          {searchOpen && (
+            <div className="absolute top-full left-0 right-0 mt-2 bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden z-50 animate-slide-up">
+              {searchQuery.length < 2 ? (
+                <div className="p-6 text-center text-slate-500 text-sm">
+                  Tapez au moins 2 caractères pour rechercher
+                </div>
+              ) : searchLoading ? (
+                <div className="p-6 text-center">
+                  <RefreshCw className="w-6 h-6 text-emerald-500 animate-spin mx-auto mb-2" />
+                  <p className="text-slate-500 text-sm">Recherche en cours...</p>
+                </div>
+              ) : totalResults === 0 ? (
+                <div className="p-6 text-center">
+                  <Search className="w-10 h-10 text-slate-200 mx-auto mb-2" />
+                  <p className="text-slate-500 text-sm">Aucun résultat pour "{searchQuery}"</p>
+                </div>
+              ) : (
+                <div className="max-h-96 overflow-y-auto">
+                  {/* Events Results */}
+                  {searchResults.events.length > 0 && (
+                    <div>
+                      <div className="px-4 py-2 bg-slate-50 border-b border-slate-100">
+                        <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider flex items-center gap-2">
+                          <Activity className="w-3.5 h-3.5" />
+                          Événements ({searchResults.events.length})
+                        </span>
+                      </div>
+                      {searchResults.events.map(event => (
+                        <button
+                          key={event.id}
+                          onClick={() => {
+                            setSearchOpen(false)
+                            setSearchQuery('')
+                            onNavigate('events-inprogress')
+                          }}
+                          className="w-full flex items-center gap-3 px-4 py-3 hover:bg-slate-50 transition-colors text-left"
+                        >
+                          <div className="w-8 h-8 rounded-lg bg-emerald-100 flex items-center justify-center">
+                            <Activity className="w-4 h-4 text-emerald-600" />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium text-slate-800 truncate">{event.title}</p>
+                            <p className="text-xs text-slate-500">{event.code}</p>
+                          </div>
+                          <span className="px-2 py-0.5 text-xs rounded-full bg-slate-100 text-slate-600">{event.status}</span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Users Results */}
+                  {searchResults.users.length > 0 && (
+                    <div>
+                      <div className="px-4 py-2 bg-slate-50 border-b border-slate-100">
+                        <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider flex items-center gap-2">
+                          <Users className="w-3.5 h-3.5" />
+                          Utilisateurs ({searchResults.users.length})
+                        </span>
+                      </div>
+                      {searchResults.users.map(user => (
+                        <button
+                          key={user.id}
+                          onClick={() => {
+                            setSearchOpen(false)
+                            setSearchQuery('')
+                            onNavigate('users-management')
+                          }}
+                          className="w-full flex items-center gap-3 px-4 py-3 hover:bg-slate-50 transition-colors text-left"
+                        >
+                          <div className="w-8 h-8 rounded-lg bg-blue-100 flex items-center justify-center text-xs font-bold text-blue-600">
+                            {user.firstName?.[0]}{user.lastName?.[0]}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium text-slate-800 truncate">{user.firstName} {user.lastName}</p>
+                            <p className="text-xs text-slate-500 truncate">{user.email}</p>
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Procedures Results */}
+                  {searchResults.procedures.length > 0 && (
+                    <div>
+                      <div className="px-4 py-2 bg-slate-50 border-b border-slate-100">
+                        <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider flex items-center gap-2">
+                          <ClipboardList className="w-3.5 h-3.5" />
+                          Procédures ({searchResults.procedures.length})
+                        </span>
+                      </div>
+                      {searchResults.procedures.map(proc => (
+                        <button
+                          key={proc.id}
+                          onClick={() => {
+                            setSearchOpen(false)
+                            setSearchQuery('')
+                            onNavigate('settings-procedures')
+                          }}
+                          className="w-full flex items-center gap-3 px-4 py-3 hover:bg-slate-50 transition-colors text-left"
+                        >
+                          <div className="w-8 h-8 rounded-lg bg-purple-100 flex items-center justify-center">
+                            <ClipboardList className="w-4 h-4 text-purple-600" />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium text-slate-800 truncate">{proc.name}</p>
+                            <p className="text-xs text-slate-500">{proc.code}</p>
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Articles Results */}
+                  {searchResults.articles.length > 0 && (
+                    <div>
+                      <div className="px-4 py-2 bg-slate-50 border-b border-slate-100">
+                        <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider flex items-center gap-2">
+                          <BookOpen className="w-3.5 h-3.5" />
+                          Articles ({searchResults.articles.length})
+                        </span>
+                      </div>
+                      {searchResults.articles.map(article => (
+                        <button
+                          key={article.id}
+                          onClick={() => {
+                            setSearchOpen(false)
+                            setSearchQuery('')
+                            onNavigate('knowledge')
+                          }}
+                          className="w-full flex items-center gap-3 px-4 py-3 hover:bg-slate-50 transition-colors text-left"
+                        >
+                          <div className="w-8 h-8 rounded-lg bg-amber-100 flex items-center justify-center">
+                            <BookOpen className="w-4 h-4 text-amber-600" />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium text-slate-800 truncate">{article.title}</p>
+                            <p className="text-xs text-slate-500">{article.category}</p>
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Actions à droite */}
@@ -12764,6 +13017,13 @@ function EventsPage({ initialStatus = 'INVESTIGATING' }: { initialStatus?: strin
   const [selectedEventIds, setSelectedEventIds] = useState<string[]>([])
   const [bulkActionLoading, setBulkActionLoading] = useState(false)
 
+  // Comments state
+  const [comments, setComments] = useState<{ id: string; content: string; authorId: string; author?: { firstName: string; lastName: string }; createdAt: string; updatedAt?: string }[]>([])
+  const [newComment, setNewComment] = useState('')
+  const [editingCommentId, setEditingCommentId] = useState<string | null>(null)
+  const [editingCommentContent, setEditingCommentContent] = useState('')
+  const [loadingComments, setLoadingComments] = useState(false)
+
   // Loading states
   const [loading, setLoading] = useState(true)
   const [loadingEvents, setLoadingEvents] = useState(false)
@@ -12864,8 +13124,9 @@ function EventsPage({ initialStatus = 'INVESTIGATING' }: { initialStatus?: strin
       if (response.ok) {
         const data = await response.json()
         setSelectedEvent(data.data)
-        // Also load procedure executions for this event
+        // Also load procedure executions and comments for this event
         loadProcedureExecutions(eventId)
+        loadComments(eventId)
       }
     } catch (error) {
       console.error('Error loading event details:', error)
@@ -13023,6 +13284,109 @@ function EventsPage({ initialStatus = 'INVESTIGATING' }: { initialStatus?: strin
     } finally {
       setLoadingProcedure(false)
     }
+  }
+
+  // Load comments for an event
+  const loadComments = async (eventId: string) => {
+    try {
+      setLoadingComments(true)
+      const response = await fetch(`${API_URL}/api/events/${eventId}/comments`, { headers: getHeaders() })
+      if (response.ok) {
+        const data = await response.json()
+        setComments(data.data || [])
+      }
+    } catch (error) {
+      console.error('Error loading comments:', error)
+    } finally {
+      setLoadingComments(false)
+    }
+  }
+
+  // Add a new comment
+  const addComment = async () => {
+    if (!newComment.trim() || !selectedEvent) return
+
+    try {
+      setLoadingComments(true)
+      const response = await fetch(`${API_URL}/api/events/${selectedEvent.id}/comments`, {
+        method: 'POST',
+        headers: getHeaders(),
+        body: JSON.stringify({ content: newComment })
+      })
+
+      if (response.ok) {
+        setNewComment('')
+        loadComments(selectedEvent.id)
+      } else {
+        alert('Erreur lors de l\'ajout du commentaire')
+      }
+    } catch (error) {
+      console.error('Error adding comment:', error)
+    } finally {
+      setLoadingComments(false)
+    }
+  }
+
+  // Update a comment
+  const updateComment = async (commentId: string) => {
+    if (!editingCommentContent.trim() || !selectedEvent) return
+
+    try {
+      setLoadingComments(true)
+      const response = await fetch(`${API_URL}/api/events/${selectedEvent.id}/comments/${commentId}`, {
+        method: 'PUT',
+        headers: getHeaders(),
+        body: JSON.stringify({ content: editingCommentContent })
+      })
+
+      if (response.ok) {
+        setEditingCommentId(null)
+        setEditingCommentContent('')
+        loadComments(selectedEvent.id)
+      } else {
+        alert('Erreur lors de la modification du commentaire')
+      }
+    } catch (error) {
+      console.error('Error updating comment:', error)
+    } finally {
+      setLoadingComments(false)
+    }
+  }
+
+  // Delete a comment
+  const deleteComment = async (commentId: string) => {
+    if (!selectedEvent) return
+    if (!confirm('Voulez-vous vraiment supprimer ce commentaire ?')) return
+
+    try {
+      setLoadingComments(true)
+      const response = await fetch(`${API_URL}/api/events/${selectedEvent.id}/comments/${commentId}`, {
+        method: 'DELETE',
+        headers: getHeaders()
+      })
+
+      if (response.ok) {
+        loadComments(selectedEvent.id)
+      } else {
+        alert('Erreur lors de la suppression du commentaire')
+      }
+    } catch (error) {
+      console.error('Error deleting comment:', error)
+    } finally {
+      setLoadingComments(false)
+    }
+  }
+
+  // Start editing a comment
+  const startEditComment = (comment: { id: string; content: string }) => {
+    setEditingCommentId(comment.id)
+    setEditingCommentContent(comment.content)
+  }
+
+  // Cancel editing
+  const cancelEditComment = () => {
+    setEditingCommentId(null)
+    setEditingCommentContent('')
   }
 
   useEffect(() => {
@@ -13905,6 +14269,125 @@ function EventsPage({ initialStatus = 'INVESTIGATING' }: { initialStatus?: strin
               )}
             </div>
 
+            {/* Comments Section */}
+            <div className="bg-white rounded-2xl border border-slate-200 p-6">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="font-semibold text-slate-800 flex items-center gap-2">
+                  <MessageSquare className="w-5 h-5 text-slate-400" />
+                  Commentaires ({comments.length})
+                </h3>
+                {loadingComments && <RefreshCw className="w-4 h-4 text-slate-400 animate-spin" />}
+              </div>
+
+              {/* Add new comment */}
+              <div className="mb-4">
+                <div className="flex gap-3">
+                  <div className="w-8 h-8 rounded-full bg-emerald-100 flex items-center justify-center flex-shrink-0">
+                    <User className="w-4 h-4 text-emerald-600" />
+                  </div>
+                  <div className="flex-1">
+                    <textarea
+                      value={newComment}
+                      onChange={(e) => setNewComment(e.target.value)}
+                      placeholder="Ajouter un commentaire..."
+                      rows={2}
+                      className="w-full px-3 py-2 text-sm border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none resize-none"
+                    />
+                    <div className="flex justify-end mt-2">
+                      <button
+                        onClick={addComment}
+                        disabled={!newComment.trim() || loadingComments}
+                        className="flex items-center gap-1.5 px-4 py-2 text-sm bg-emerald-500 text-white rounded-lg hover:bg-emerald-600 transition-colors disabled:opacity-50"
+                      >
+                        <Send className="w-3.5 h-3.5" />
+                        Envoyer
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Comments list */}
+              {comments.length > 0 ? (
+                <div className="space-y-4">
+                  {comments.map(comment => (
+                    <div key={comment.id} className="flex gap-3 group">
+                      <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center flex-shrink-0 text-xs font-bold text-blue-600">
+                        {comment.author?.firstName?.[0]}{comment.author?.lastName?.[0]}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className="text-sm font-medium text-slate-800">
+                            {comment.author?.firstName} {comment.author?.lastName}
+                          </span>
+                          <span className="text-xs text-slate-400">
+                            {new Date(comment.createdAt).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' })}
+                          </span>
+                          {comment.updatedAt && comment.updatedAt !== comment.createdAt && (
+                            <span className="text-xs text-slate-400">(modifié)</span>
+                          )}
+                        </div>
+
+                        {editingCommentId === comment.id ? (
+                          <div>
+                            <textarea
+                              value={editingCommentContent}
+                              onChange={(e) => setEditingCommentContent(e.target.value)}
+                              rows={2}
+                              className="w-full px-3 py-2 text-sm border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none resize-none"
+                            />
+                            <div className="flex gap-2 mt-2">
+                              <button
+                                onClick={() => updateComment(comment.id)}
+                                disabled={loadingComments}
+                                className="px-3 py-1.5 text-xs bg-emerald-500 text-white rounded-lg hover:bg-emerald-600 transition-colors disabled:opacity-50"
+                              >
+                                Enregistrer
+                              </button>
+                              <button
+                                onClick={cancelEditComment}
+                                className="px-3 py-1.5 text-xs text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
+                              >
+                                Annuler
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
+                          <p className="text-sm text-slate-600 whitespace-pre-wrap">{comment.content}</p>
+                        )}
+
+                        {/* Actions (visible on hover) */}
+                        {editingCommentId !== comment.id && (
+                          <div className="flex gap-1 mt-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                            <button
+                              onClick={() => startEditComment(comment)}
+                              className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                              title="Modifier"
+                            >
+                              <Edit3 className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              onClick={() => deleteComment(comment.id)}
+                              className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                              title="Supprimer"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-center py-6">
+                  <MessageSquare className="w-10 h-10 text-slate-200 mx-auto mb-2" />
+                  <p className="text-slate-500 text-sm">Aucun commentaire</p>
+                  <p className="text-slate-400 text-xs mt-1">Soyez le premier à commenter</p>
+                </div>
+              )}
+            </div>
+
             {/* Procedure Executions */}
             <div className="bg-white rounded-2xl border border-slate-200 p-6">
               <div className="flex items-center justify-between mb-4">
@@ -14605,7 +15088,7 @@ function App() {
         onMobileClose={() => setMobileMenuOpen(false)}
       />
       <div className={`transition-all duration-300 ${sidebarCollapsed ? 'lg:ml-16' : 'lg:ml-[270px]'}`}>
-        <Header onMenuToggle={() => setMobileMenuOpen(true)} currentPage={currentPage} onLogout={handleLogout} onProfileClick={() => setCurrentPage('my-profile')} onNotificationsClick={() => setCurrentPage('notifications')} userSession={userSession} />
+        <Header onMenuToggle={() => setMobileMenuOpen(true)} currentPage={currentPage} onLogout={handleLogout} onProfileClick={() => setCurrentPage('my-profile')} onNotificationsClick={() => setCurrentPage('notifications')} onNavigate={setCurrentPage} userSession={userSession} />
         <main className="p-4 lg:p-8">
           {currentPage === 'dashboard' && <Dashboard userSession={userSession} onNavigate={setCurrentPage} />}
           {currentPage === 'my-profile' && <MyProfilePage userSession={userSession} onUpdateSession={setUserSession} />}
