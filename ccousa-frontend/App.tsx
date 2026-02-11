@@ -1584,6 +1584,77 @@ function Dashboard({ userSession, onNavigate }: { userSession: UserSession | nul
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null)
   const [autoRefresh, setAutoRefresh] = useState(true)
 
+  // Widget configuration state
+  const [showWidgetSettings, setShowWidgetSettings] = useState(false)
+  const [widgetConfig, setWidgetConfig] = useState<Record<string, boolean>>(() => {
+    const saved = localStorage.getItem('dashboard_widgets')
+    if (saved) {
+      try {
+        return JSON.parse(saved)
+      } catch { return {} }
+    }
+    return {
+      hero: true,
+      urgentAlerts: true,
+      statsCards: true,
+      trendChart: true,
+      recentEvents: true,
+      regionsPanel: true,
+      quickActions: true,
+      bottomStats: true,
+    }
+  })
+
+  // Widget order state
+  const [widgetOrder, setWidgetOrder] = useState<string[]>(() => {
+    const saved = localStorage.getItem('dashboard_widget_order')
+    if (saved) {
+      try {
+        return JSON.parse(saved)
+      } catch { return [] }
+    }
+    return ['hero', 'urgentAlerts', 'statsCards', 'trendChart', 'mainContent', 'quickActions', 'bottomStats']
+  })
+
+  // Save widget config to localStorage
+  const saveWidgetConfig = (config: Record<string, boolean>) => {
+    setWidgetConfig(config)
+    localStorage.setItem('dashboard_widgets', JSON.stringify(config))
+  }
+
+  // Toggle a widget
+  const toggleWidget = (widgetId: string) => {
+    const newConfig = { ...widgetConfig, [widgetId]: !widgetConfig[widgetId] }
+    saveWidgetConfig(newConfig)
+  }
+
+  // Reset to defaults
+  const resetWidgets = () => {
+    const defaultConfig = {
+      hero: true,
+      urgentAlerts: true,
+      statsCards: true,
+      trendChart: true,
+      recentEvents: true,
+      regionsPanel: true,
+      quickActions: true,
+      bottomStats: true,
+    }
+    saveWidgetConfig(defaultConfig)
+  }
+
+  // Widget definitions
+  const widgetDefinitions = [
+    { id: 'hero', name: 'Bannière de bienvenue', icon: <LayoutDashboard className="w-4 h-4" />, description: 'Message de bienvenue et actions rapides' },
+    { id: 'urgentAlerts', name: 'Alertes urgentes', icon: <AlertTriangle className="w-4 h-4" />, description: 'Événements nécessitant une attention immédiate' },
+    { id: 'statsCards', name: 'Cartes statistiques', icon: <BarChart3 className="w-4 h-4" />, description: 'Indicateurs clés de performance' },
+    { id: 'trendChart', name: 'Graphique de tendance', icon: <TrendingUp className="w-4 h-4" />, description: 'Évolution sur 7 jours' },
+    { id: 'recentEvents', name: 'Événements récents', icon: <Activity className="w-4 h-4" />, description: 'Derniers événements signalés' },
+    { id: 'regionsPanel', name: 'Panneau régions', icon: <MapPin className="w-4 h-4" />, description: 'Répartition géographique' },
+    { id: 'quickActions', name: 'Actions rapides', icon: <Zap className="w-4 h-4" />, description: 'Raccourcis vers les actions fréquentes' },
+    { id: 'bottomStats', name: 'Statistiques secondaires', icon: <Package className="w-4 h-4" />, description: 'Utilisateurs, procédures, articles' },
+  ]
+
   // Helper pour les headers auth
   const getHeaders = () => {
     const authData = localStorage.getItem('auth_token')
@@ -1781,7 +1852,7 @@ function Dashboard({ userSession, onNavigate }: { userSession: UserSession | nul
   return (
     <div className="space-y-6">
       {/* Hero Section avec fond animé */}
-      <div className="relative overflow-hidden bg-gradient-to-br from-emerald-600 via-teal-600 to-cyan-700 rounded-3xl p-8 text-white animate-slide-up">
+      {widgetConfig.hero && <div className="relative overflow-hidden bg-gradient-to-br from-emerald-600 via-teal-600 to-cyan-700 rounded-3xl p-8 text-white animate-slide-up">
         {/* Cercles décoratifs */}
         <div className="absolute top-0 right-0 w-64 h-64 bg-white/10 rounded-full -translate-y-1/2 translate-x-1/2" />
         <div className="absolute bottom-0 left-0 w-48 h-48 bg-white/5 rounded-full translate-y-1/2 -translate-x-1/2" />
@@ -1814,7 +1885,7 @@ function Dashboard({ userSession, onNavigate }: { userSession: UserSession | nul
             </button>
           </div>
         </div>
-      </div>
+      </div>}
 
       {/* Auto-refresh indicator and controls */}
       <div className="flex items-center justify-between">
@@ -1832,19 +1903,98 @@ function Dashboard({ userSession, onNavigate }: { userSession: UserSession | nul
             <RefreshCw className={`w-4 h-4 text-slate-500 ${loading ? 'animate-spin' : ''}`} />
           </button>
         </div>
-        <label className="flex items-center gap-2 text-sm text-slate-600 cursor-pointer">
-          <input
-            type="checkbox"
-            checked={autoRefresh}
-            onChange={(e) => setAutoRefresh(e.target.checked)}
-            className="w-4 h-4 rounded border-slate-300 text-emerald-500 focus:ring-emerald-500"
-          />
-          Rafraîchissement auto (30s)
-        </label>
+        <div className="flex items-center gap-4">
+          <button
+            onClick={() => setShowWidgetSettings(true)}
+            className="flex items-center gap-2 px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
+            title="Personnaliser le tableau de bord"
+          >
+            <Settings className="w-4 h-4" />
+            Personnaliser
+          </button>
+          <label className="flex items-center gap-2 text-sm text-slate-600 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={autoRefresh}
+              onChange={(e) => setAutoRefresh(e.target.checked)}
+              className="w-4 h-4 rounded border-slate-300 text-emerald-500 focus:ring-emerald-500"
+            />
+            Rafraîchissement auto (30s)
+          </label>
+        </div>
       </div>
 
+      {/* Widget Settings Modal */}
+      {showWidgetSettings && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-2xl w-full max-w-lg mx-4 max-h-[90vh] overflow-hidden">
+            <div className="flex items-center justify-between p-6 border-b border-slate-200">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-primary-100 rounded-xl flex items-center justify-center">
+                  <Settings className="w-5 h-5 text-primary-600" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-semibold text-slate-800">Personnaliser le tableau de bord</h3>
+                  <p className="text-sm text-slate-500">Choisissez les widgets à afficher</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowWidgetSettings(false)}
+                className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-6 space-y-3 max-h-[50vh] overflow-y-auto">
+              {widgetDefinitions.map(widget => (
+                <label
+                  key={widget.id}
+                  className={`flex items-center gap-4 p-4 rounded-xl cursor-pointer transition-colors ${
+                    widgetConfig[widget.id] ? 'bg-primary-50 border-2 border-primary-200' : 'bg-slate-50 border-2 border-transparent'
+                  }`}
+                >
+                  <input
+                    type="checkbox"
+                    checked={widgetConfig[widget.id] ?? true}
+                    onChange={() => toggleWidget(widget.id)}
+                    className="w-5 h-5 rounded border-slate-300 text-primary-600 focus:ring-primary-500"
+                  />
+                  <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${
+                    widgetConfig[widget.id] ? 'bg-primary-100 text-primary-600' : 'bg-slate-200 text-slate-500'
+                  }`}>
+                    {widget.icon}
+                  </div>
+                  <div className="flex-1">
+                    <p className={`font-medium ${widgetConfig[widget.id] ? 'text-primary-800' : 'text-slate-700'}`}>
+                      {widget.name}
+                    </p>
+                    <p className="text-xs text-slate-500">{widget.description}</p>
+                  </div>
+                </label>
+              ))}
+            </div>
+
+            <div className="flex items-center justify-between p-6 border-t border-slate-200 bg-slate-50">
+              <button
+                onClick={resetWidgets}
+                className="px-4 py-2 text-sm text-slate-600 hover:bg-slate-200 rounded-lg transition-colors"
+              >
+                Réinitialiser
+              </button>
+              <button
+                onClick={() => setShowWidgetSettings(false)}
+                className="px-6 py-2 bg-primary-600 text-white rounded-xl hover:bg-primary-700 transition-colors"
+              >
+                Terminé
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Urgent Events Alert */}
-      {urgentEvents.length > 0 && (
+      {widgetConfig.urgentAlerts && urgentEvents.length > 0 && (
         <div className="bg-gradient-to-r from-red-500 to-rose-600 rounded-2xl p-4 text-white animate-slide-up">
           <div className="flex items-center gap-3 mb-3">
             <div className="w-10 h-10 bg-white/20 rounded-xl flex items-center justify-center">
@@ -1873,7 +2023,7 @@ function Dashboard({ userSession, onNavigate }: { userSession: UserSession | nul
       )}
 
       {/* Stats Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
+      {widgetConfig.statsCards && <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
         {stats.map((stat, i) => (
           <div
             key={i}
@@ -1903,10 +2053,10 @@ function Dashboard({ userSession, onNavigate }: { userSession: UserSession | nul
             </div>
           </div>
         ))}
-      </div>
+      </div>}
 
       {/* Trend Chart - Events over last 7 days */}
-      <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6 animate-slide-up" style={{ animationDelay: '350ms' }}>
+      {widgetConfig.trendChart && <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6 animate-slide-up" style={{ animationDelay: '350ms' }}>
         <div className="flex items-center justify-between mb-6">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 bg-gradient-to-br from-purple-500 to-indigo-600 rounded-xl flex items-center justify-center">
@@ -1955,13 +2105,13 @@ function Dashboard({ userSession, onNavigate }: { userSession: UserSession | nul
             Voir plus de statistiques <ArrowRight className="w-4 h-4" />
           </button>
         </div>
-      </div>
+      </div>}
 
       {/* Main Content Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
 
         {/* Events List - 2 columns */}
-        <div className="lg:col-span-2 bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden animate-slide-up" style={{ animationDelay: '400ms' }}>
+        {widgetConfig.recentEvents && <div className="lg:col-span-2 bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden animate-slide-up" style={{ animationDelay: '400ms' }}>
           <div className="flex items-center justify-between p-5 border-b border-slate-100">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 bg-gradient-to-br from-emerald-500 to-teal-600 rounded-xl flex items-center justify-center">
@@ -2011,10 +2161,10 @@ function Dashboard({ userSession, onNavigate }: { userSession: UserSession | nul
               </div>
             ))}
           </div>
-        </div>
+        </div>}
 
         {/* Regions Panel */}
-        <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden animate-slide-up" style={{ animationDelay: '500ms' }}>
+        {widgetConfig.regionsPanel && <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden animate-slide-up" style={{ animationDelay: '500ms' }}>
           <div className="p-5 border-b border-slate-100">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-xl flex items-center justify-center">
@@ -2049,11 +2199,11 @@ function Dashboard({ userSession, onNavigate }: { userSession: UserSession | nul
               <MapPin className="w-4 h-4" /> Voir la carte
             </button>
           </div>
-        </div>
+        </div>}
       </div>
 
       {/* Quick Actions */}
-      <div className="animate-slide-up" style={{ animationDelay: '600ms' }}>
+      {widgetConfig.quickActions && <div className="animate-slide-up" style={{ animationDelay: '600ms' }}>
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-lg font-display font-bold text-slate-800">{t('dashboard.quickActions')}</h3>
           <span className="text-xs text-slate-500 bg-slate-100 px-3 py-1 rounded-full">Raccourcis</span>
@@ -2080,10 +2230,10 @@ function Dashboard({ userSession, onNavigate }: { userSession: UserSession | nul
             </button>
           ))}
         </div>
-      </div>
+      </div>}
 
       {/* Bottom Stats Bar */}
-      <div className="bg-gradient-to-r from-slate-800 to-slate-900 rounded-2xl p-6 animate-slide-up" style={{ animationDelay: '700ms' }}>
+      {widgetConfig.bottomStats && <div className="bg-gradient-to-r from-slate-800 to-slate-900 rounded-2xl p-6 animate-slide-up" style={{ animationDelay: '700ms' }}>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
           {bottomStats.map((item, i) => (
             <div key={i} className="text-center">
@@ -2095,7 +2245,7 @@ function Dashboard({ userSession, onNavigate }: { userSession: UserSession | nul
             </div>
           ))}
         </div>
-      </div>
+      </div>}
 
       {/* Loading overlay */}
       {loading && (
