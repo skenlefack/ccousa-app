@@ -11940,6 +11940,11 @@ function AnalyticsPage() {
   const [selectedPeriod, setSelectedPeriod] = useState<'week' | 'month' | 'quarter' | 'year'>('month')
   const [activeTab, setActiveTab] = useState<'overview' | 'events' | 'users' | 'activity'>('overview')
 
+  // Export state
+  const [exportDropdownOpen, setExportDropdownOpen] = useState(false)
+  const [exporting, setExporting] = useState(false)
+  const exportRef = useRef<HTMLDivElement>(null)
+
   const getHeaders = () => {
     const authData = localStorage.getItem('auth_token')
     const token = authData ? JSON.parse(authData).token : null
@@ -11994,6 +11999,89 @@ function AnalyticsPage() {
 
     loadAnalyticsData()
   }, [selectedPeriod])
+
+  // Close export dropdown on click outside
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (exportRef.current && !exportRef.current.contains(event.target as Node)) {
+        setExportDropdownOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [])
+
+  // Export dashboard data
+  const handleExport = async (format: 'pdf' | 'excel' | 'csv') => {
+    setExporting(true)
+    try {
+      const response = await fetch(`${API_URL}/api/analytics/export/dashboard`, {
+        method: 'POST',
+        headers: getHeaders(),
+        body: JSON.stringify({
+          format,
+          period: selectedPeriod,
+          includeCharts: true,
+          includeActivity: true
+        })
+      })
+
+      if (response.ok) {
+        const data = await response.json()
+        // In a real implementation, this would trigger a file download
+        alert(`Export ${format.toUpperCase()} généré avec succès!\n\nLien: ${data.data?.downloadUrl || 'N/A'}`)
+      } else {
+        alert('Erreur lors de l\'export')
+      }
+    } catch (error) {
+      console.error('Export error:', error)
+      // Fallback: Generate client-side export
+      generateClientSideExport(format)
+    } finally {
+      setExporting(false)
+      setExportDropdownOpen(false)
+    }
+  }
+
+  // Client-side export fallback
+  const generateClientSideExport = (format: 'pdf' | 'excel' | 'csv') => {
+    if (format === 'csv' && stats) {
+      // Generate CSV data
+      const csvData = [
+        ['Métrique', 'Valeur'],
+        ['Total Événements', stats.totalEvents?.toString() || '0'],
+        ['Utilisateurs Actifs', stats.activeUsers?.toString() || '0'],
+        ['Procédures Actives', stats.activeProcedures?.toString() || '0'],
+        ['Soumissions Formulaires', stats.formSubmissions?.toString() || '0'],
+      ]
+
+      // Add events by category
+      csvData.push(['', ''])
+      csvData.push(['Événements par catégorie', ''])
+      eventsByCategory.forEach(cat => {
+        csvData.push([cat.name, cat.value.toString()])
+      })
+
+      // Add events by severity
+      csvData.push(['', ''])
+      csvData.push(['Événements par sévérité', ''])
+      eventsBySeverity.forEach(sev => {
+        csvData.push([sev.name, sev.value.toString()])
+      })
+
+      const csvContent = csvData.map(row => row.join(',')).join('\n')
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = `analytics-export-${new Date().toISOString().split('T')[0]}.csv`
+      link.click()
+      URL.revokeObjectURL(url)
+      alert('Export CSV téléchargé!')
+    } else {
+      alert(`L'export ${format.toUpperCase()} nécessite le serveur. L'export CSV est disponible en mode hors ligne.`)
+    }
+  }
 
   // KPI cards
   const kpiCards = stats ? [
@@ -12084,10 +12172,59 @@ function AnalyticsPage() {
             <option value="quarter">Ce trimestre</option>
             <option value="year">Cette année</option>
           </select>
-          <button className="flex items-center gap-2 px-4 py-2.5 bg-emerald-500 text-white rounded-xl hover:bg-emerald-600 transition-colors">
-            <Download className="w-4 h-4" />
-            Exporter
-          </button>
+          {/* Export Dropdown */}
+          <div className="relative" ref={exportRef}>
+            <button
+              onClick={() => setExportDropdownOpen(!exportDropdownOpen)}
+              disabled={exporting}
+              className="flex items-center gap-2 px-4 py-2.5 bg-emerald-500 text-white rounded-xl hover:bg-emerald-600 transition-colors disabled:opacity-50"
+            >
+              {exporting ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
+              Exporter
+              <ChevronDown className={`w-4 h-4 transition-transform ${exportDropdownOpen ? 'rotate-180' : ''}`} />
+            </button>
+
+            {exportDropdownOpen && (
+              <div className="absolute right-0 top-full mt-2 w-48 bg-white rounded-xl shadow-xl border border-slate-200 py-2 z-50 animate-slide-up">
+                <button
+                  onClick={() => handleExport('pdf')}
+                  className="w-full flex items-center gap-3 px-4 py-2.5 text-left text-sm text-slate-700 hover:bg-slate-50 transition-colors"
+                >
+                  <div className="w-8 h-8 rounded-lg bg-red-100 flex items-center justify-center">
+                    <FileText className="w-4 h-4 text-red-600" />
+                  </div>
+                  <div>
+                    <p className="font-medium">Export PDF</p>
+                    <p className="text-xs text-slate-500">Rapport complet</p>
+                  </div>
+                </button>
+                <button
+                  onClick={() => handleExport('excel')}
+                  className="w-full flex items-center gap-3 px-4 py-2.5 text-left text-sm text-slate-700 hover:bg-slate-50 transition-colors"
+                >
+                  <div className="w-8 h-8 rounded-lg bg-green-100 flex items-center justify-center">
+                    <BarChart3 className="w-4 h-4 text-green-600" />
+                  </div>
+                  <div>
+                    <p className="font-medium">Export Excel</p>
+                    <p className="text-xs text-slate-500">Données détaillées</p>
+                  </div>
+                </button>
+                <button
+                  onClick={() => handleExport('csv')}
+                  className="w-full flex items-center gap-3 px-4 py-2.5 text-left text-sm text-slate-700 hover:bg-slate-50 transition-colors"
+                >
+                  <div className="w-8 h-8 rounded-lg bg-blue-100 flex items-center justify-center">
+                    <Database className="w-4 h-4 text-blue-600" />
+                  </div>
+                  <div>
+                    <p className="font-medium">Export CSV</p>
+                    <p className="text-xs text-slate-500">Format brut</p>
+                  </div>
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
