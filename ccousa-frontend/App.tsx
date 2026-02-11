@@ -14945,6 +14945,17 @@ function EventsPage({ initialStatus = 'INVESTIGATING' }: { initialStatus?: strin
   const [editingCommentContent, setEditingCommentContent] = useState('')
   const [loadingComments, setLoadingComments] = useState(false)
 
+  // Timeline state
+  const [timeline, setTimeline] = useState<{
+    id: string
+    action: string
+    description: string
+    user?: { id: string; firstName: string; lastName: string }
+    metadata?: Record<string, unknown>
+    createdAt: string
+  }[]>([])
+  const [loadingTimeline, setLoadingTimeline] = useState(false)
+
   // Loading states
   const [loading, setLoading] = useState(true)
   const [loadingEvents, setLoadingEvents] = useState(false)
@@ -15045,9 +15056,10 @@ function EventsPage({ initialStatus = 'INVESTIGATING' }: { initialStatus?: strin
       if (response.ok) {
         const data = await response.json()
         setSelectedEvent(data.data)
-        // Also load procedure executions and comments for this event
+        // Also load procedure executions, comments, and timeline for this event
         loadProcedureExecutions(eventId)
         loadComments(eventId)
+        loadTimeline(eventId)
       }
     } catch (error) {
       console.error('Error loading event details:', error)
@@ -15220,6 +15232,22 @@ function EventsPage({ initialStatus = 'INVESTIGATING' }: { initialStatus?: strin
       console.error('Error loading comments:', error)
     } finally {
       setLoadingComments(false)
+    }
+  }
+
+  // Load event timeline
+  const loadTimeline = async (eventId: string) => {
+    try {
+      setLoadingTimeline(true)
+      const response = await fetch(`${API_URL}/api/events/${eventId}/timeline`, { headers: getHeaders() })
+      if (response.ok) {
+        const data = await response.json()
+        setTimeline(data.data || [])
+      }
+    } catch (error) {
+      console.error('Error loading timeline:', error)
+    } finally {
+      setLoadingTimeline(false)
     }
   }
 
@@ -16098,20 +16126,99 @@ function EventsPage({ initialStatus = 'INVESTIGATING' }: { initialStatus?: strin
 
             {/* Timeline */}
             <div className="bg-white rounded-2xl border border-slate-200 p-6">
-              <h3 className="font-semibold text-slate-800 mb-4">Historique</h3>
-              <div className="space-y-4">
-                <div className="flex gap-4">
-                  <div className="flex flex-col items-center">
-                    <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center">
-                      <Clock className="w-4 h-4 text-blue-600" />
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="font-semibold text-slate-800 flex items-center gap-2">
+                  <History className="w-5 h-5 text-slate-400" />
+                  Historique des actions
+                </h3>
+                {loadingTimeline && <RefreshCw className="w-4 h-4 text-slate-400 animate-spin" />}
+              </div>
+              <div className="space-y-1">
+                {/* Timeline entries */}
+                {timeline.length > 0 ? (
+                  timeline.map((entry, index) => {
+                    // Determine icon and color based on action type
+                    const getActionConfig = (action: string) => {
+                      const configs: Record<string, { icon: React.ReactNode; color: string; bgColor: string; label: string }> = {
+                        'created': { icon: <Plus className="w-4 h-4" />, color: 'text-blue-600', bgColor: 'bg-blue-100', label: 'Création' },
+                        'updated': { icon: <Edit3 className="w-4 h-4" />, color: 'text-amber-600', bgColor: 'bg-amber-100', label: 'Modification' },
+                        'status_changed': { icon: <RefreshCw className="w-4 h-4" />, color: 'text-purple-600', bgColor: 'bg-purple-100', label: 'Changement de statut' },
+                        'assigned': { icon: <User className="w-4 h-4" />, color: 'text-green-600', bgColor: 'bg-green-100', label: 'Assignation' },
+                        'unassigned': { icon: <User className="w-4 h-4" />, color: 'text-slate-600', bgColor: 'bg-slate-100', label: 'Désassignation' },
+                        'comment_added': { icon: <MessageSquare className="w-4 h-4" />, color: 'text-cyan-600', bgColor: 'bg-cyan-100', label: 'Commentaire' },
+                        'attachment_added': { icon: <Paperclip className="w-4 h-4" />, color: 'text-pink-600', bgColor: 'bg-pink-100', label: 'Pièce jointe' },
+                        'task_added': { icon: <CheckSquare className="w-4 h-4" />, color: 'text-teal-600', bgColor: 'bg-teal-100', label: 'Tâche ajoutée' },
+                        'task_completed': { icon: <Check className="w-4 h-4" />, color: 'text-emerald-600', bgColor: 'bg-emerald-100', label: 'Tâche terminée' },
+                        'resolved': { icon: <CheckCircle className="w-4 h-4" />, color: 'text-emerald-600', bgColor: 'bg-emerald-100', label: 'Résolu' },
+                        'reopened': { icon: <RotateCcw className="w-4 h-4" />, color: 'text-orange-600', bgColor: 'bg-orange-100', label: 'Réouvert' },
+                        'procedure_started': { icon: <Play className="w-4 h-4" />, color: 'text-indigo-600', bgColor: 'bg-indigo-100', label: 'Procédure démarrée' },
+                        'procedure_completed': { icon: <Flag className="w-4 h-4" />, color: 'text-emerald-600', bgColor: 'bg-emerald-100', label: 'Procédure terminée' },
+                      }
+                      return configs[action] || { icon: <Clock className="w-4 h-4" />, color: 'text-slate-600', bgColor: 'bg-slate-100', label: action }
+                    }
+
+                    const config = getActionConfig(entry.action)
+                    const isLast = index === timeline.length - 1
+
+                    return (
+                      <div key={entry.id} className="flex gap-4">
+                        <div className="flex flex-col items-center">
+                          <div className={`w-8 h-8 rounded-full ${config.bgColor} flex items-center justify-center ${config.color}`}>
+                            {config.icon}
+                          </div>
+                          {!isLast && <div className="w-0.5 flex-1 bg-slate-200 my-2" />}
+                        </div>
+                        <div className={`flex-1 ${!isLast ? 'pb-4' : ''}`}>
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className={`px-2 py-0.5 rounded text-xs font-medium ${config.bgColor} ${config.color}`}>
+                              {config.label}
+                            </span>
+                            {entry.user && (
+                              <span className="text-sm text-slate-500">
+                                par {entry.user.firstName} {entry.user.lastName}
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-sm text-slate-700 mt-1">{entry.description}</p>
+                          <p className="text-xs text-slate-400 mt-1">
+                            {new Date(entry.createdAt).toLocaleString('fr-FR', {
+                              dateStyle: 'medium',
+                              timeStyle: 'short'
+                            })}
+                          </p>
+                        </div>
+                      </div>
+                    )
+                  })
+                ) : (
+                  /* Fallback: Show creation event if no timeline entries */
+                  <div className="flex gap-4">
+                    <div className="flex flex-col items-center">
+                      <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center">
+                        <Plus className="w-4 h-4 text-blue-600" />
+                      </div>
                     </div>
-                    <div className="w-0.5 flex-1 bg-slate-200 my-2" />
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2">
+                        <span className="px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-600">
+                          Création
+                        </span>
+                        {selectedEvent.reportedBy && (
+                          <span className="text-sm text-slate-500">
+                            par {selectedEvent.reportedBy.firstName} {selectedEvent.reportedBy.lastName}
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-sm text-slate-700 mt-1">Événement créé</p>
+                      <p className="text-xs text-slate-400 mt-1">
+                        {new Date(selectedEvent.createdAt).toLocaleString('fr-FR', {
+                          dateStyle: 'medium',
+                          timeStyle: 'short'
+                        })}
+                      </p>
+                    </div>
                   </div>
-                  <div className="flex-1 pb-4">
-                    <p className="font-medium text-slate-800">Événement créé</p>
-                    <p className="text-sm text-slate-500">{new Date(selectedEvent.createdAt).toLocaleString('fr-FR')}</p>
-                  </div>
-                </div>
+                )}
               </div>
             </div>
           </div>
