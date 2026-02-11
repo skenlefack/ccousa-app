@@ -1,5 +1,11 @@
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
+import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet'
+import L from 'leaflet'
+import 'leaflet/dist/leaflet.css'
+import 'leaflet.markercluster/dist/MarkerCluster.css'
+import 'leaflet.markercluster/dist/MarkerCluster.Default.css'
+import 'leaflet.markercluster'
 import {
   Eye, EyeOff, Mail, Lock, ArrowRight, ArrowLeft, Activity, MapPin, Users,
   FileText, Bell, LayoutDashboard, Calendar, Syringe, ClipboardList,
@@ -584,6 +590,7 @@ function Sidebar({ activeItem, onItemClick, isCollapsed, onToggleCollapse, isMob
         { id: 'events-received', label: t('sidebar.eventsReceived') },
         { id: 'events-processed', label: t('sidebar.eventsProcessed') },
         { id: 'events-scheduled', label: t('sidebar.eventsScheduled') },
+        { id: 'events-map', label: t('sidebar.eventsMap', 'Carte') },
       ]
     },
     { id: 'reports', label: t('sidebar.reports'), icon: <BarChart3 className="w-5 h-5" /> },
@@ -11763,6 +11770,474 @@ function ReportsPage() {
   )
 }
 
+/* ============================================
+   EVENTS MAP PAGE
+   ============================================ */
+
+// Custom marker cluster group component
+function MarkerClusterGroup({ children, events }: { children?: React.ReactNode; events: MapEventData[] }) {
+  const map = useMap()
+
+  useEffect(() => {
+    const markers = (L as unknown as { markerClusterGroup: (options?: object) => L.MarkerClusterGroup }).markerClusterGroup({
+      chunkedLoading: true,
+      spiderfyOnMaxZoom: true,
+      showCoverageOnHover: false,
+      maxClusterRadius: 50,
+      iconCreateFunction: (cluster: L.MarkerCluster) => {
+        const count = cluster.getChildCount()
+        let size = 'small'
+        if (count >= 10) size = 'medium'
+        if (count >= 50) size = 'large'
+
+        return L.divIcon({
+          html: `<div class="cluster-marker cluster-${size}">${count}</div>`,
+          className: 'custom-cluster-icon',
+          iconSize: L.point(40, 40),
+        })
+      },
+    })
+
+    events.forEach((event) => {
+      if (event.latitude && event.longitude) {
+        const severityColors: Record<string, string> = {
+          critical: '#dc2626',
+          high: '#ea580c',
+          medium: '#eab308',
+          low: '#22c55e',
+        }
+        const color = severityColors[event.severity] || '#6b7280'
+
+        const customIcon = L.divIcon({
+          html: `
+            <div style="
+              width: 30px;
+              height: 30px;
+              background: ${color};
+              border: 3px solid white;
+              border-radius: 50%;
+              box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+              display: flex;
+              align-items: center;
+              justify-content: center;
+            ">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="white" stroke="white" stroke-width="2">
+                <path d="M22 12h-4l-3 9L9 3l-3 9H2"/>
+              </svg>
+            </div>
+          `,
+          className: 'custom-event-marker',
+          iconSize: [30, 30],
+          iconAnchor: [15, 15],
+        })
+
+        const marker = L.marker([event.latitude, event.longitude], { icon: customIcon })
+
+        marker.bindPopup(`
+          <div style="min-width: 200px; padding: 8px;">
+            <div style="font-weight: 600; font-size: 14px; margin-bottom: 4px;">${event.title}</div>
+            <div style="font-size: 12px; color: #64748b; margin-bottom: 8px;">${event.code}</div>
+            <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 6px;">
+              <span style="
+                padding: 2px 8px;
+                border-radius: 12px;
+                font-size: 11px;
+                font-weight: 500;
+                background: ${color}20;
+                color: ${color};
+              ">${event.severity}</span>
+              <span style="
+                padding: 2px 8px;
+                border-radius: 12px;
+                font-size: 11px;
+                background: #f1f5f9;
+                color: #475569;
+              ">${event.status}</span>
+            </div>
+            <div style="font-size: 12px; color: #64748b;">
+              <strong>Lieu:</strong> ${event.location || 'Non spécifié'}
+            </div>
+            ${event.reportedAt ? `<div style="font-size: 11px; color: #94a3b8; margin-top: 4px;">
+              Signalé le ${new Date(event.reportedAt).toLocaleDateString('fr-FR')}
+            </div>` : ''}
+          </div>
+        `)
+
+        markers.addLayer(marker)
+      }
+    })
+
+    map.addLayer(markers)
+
+    return () => {
+      map.removeLayer(markers)
+    }
+  }, [map, events])
+
+  return null
+}
+
+interface MapEventData {
+  id: string
+  code: string
+  title: string
+  description?: string
+  severity: 'critical' | 'high' | 'medium' | 'low'
+  status: string
+  location?: string
+  latitude?: number
+  longitude?: number
+  reportedAt?: string
+  category?: { name: string }
+}
+
+// Cameroon regions with approximate coordinates
+const CAMEROON_REGIONS = [
+  { name: 'Adamaoua', lat: 7.3364, lng: 13.5893 },
+  { name: 'Centre', lat: 3.8683, lng: 11.5021 },
+  { name: 'Est', lat: 4.1552, lng: 14.2505 },
+  { name: 'Extrême-Nord', lat: 10.5916, lng: 14.2579 },
+  { name: 'Littoral', lat: 4.0511, lng: 9.7679 },
+  { name: 'Nord', lat: 8.5646, lng: 13.9571 },
+  { name: 'Nord-Ouest', lat: 5.9631, lng: 10.1591 },
+  { name: 'Ouest', lat: 5.4927, lng: 10.4176 },
+  { name: 'Sud', lat: 2.8312, lng: 10.9076 },
+  { name: 'Sud-Ouest', lat: 4.9276, lng: 9.2342 },
+]
+
+function EventsMapPage() {
+  const { t } = useTranslation()
+  const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
+
+  // State
+  const [events, setEvents] = useState<MapEventData[]>([])
+  const [loading, setLoading] = useState(true)
+  const [filterStatus, setFilterStatus] = useState<string>('')
+  const [filterSeverity, setFilterSeverity] = useState<string>('')
+  const [filterCategory, setFilterCategory] = useState<string>('')
+  const [filterPeriod, setFilterPeriod] = useState<string>('30')
+  const [categories, setCategories] = useState<{ id: string; name: string }[]>([])
+  const [showLegend, setShowLegend] = useState(true)
+  const [mapCenter] = useState<[number, number]>([7.3697, 12.3547]) // Cameroon center
+  const [mapZoom] = useState(6)
+
+  // Load events
+  useEffect(() => {
+    loadEvents()
+    loadCategories()
+  }, [filterStatus, filterSeverity, filterCategory, filterPeriod])
+
+  const loadEvents = async () => {
+    setLoading(true)
+    try {
+      const token = localStorage.getItem('authToken')
+      const params = new URLSearchParams()
+      if (filterStatus) params.append('status', filterStatus)
+      if (filterSeverity) params.append('severity', filterSeverity)
+      if (filterCategory) params.append('categoryId', filterCategory)
+      if (filterPeriod) {
+        const startDate = new Date()
+        startDate.setDate(startDate.getDate() - parseInt(filterPeriod))
+        params.append('startDate', startDate.toISOString())
+      }
+      params.append('pageSize', '500')
+
+      const response = await fetch(`${API_URL}/api/events?${params}`, {
+        headers: { 'Authorization': `Bearer ${token}` },
+      })
+
+      if (response.ok) {
+        const data = await response.json()
+        // Generate random coordinates for events without coordinates (demo purposes)
+        const eventsWithCoords = (data.data?.events || []).map((event: MapEventData) => {
+          if (!event.latitude || !event.longitude) {
+            const randomRegion = CAMEROON_REGIONS[Math.floor(Math.random() * CAMEROON_REGIONS.length)]
+            return {
+              ...event,
+              latitude: randomRegion.lat + (Math.random() - 0.5) * 0.5,
+              longitude: randomRegion.lng + (Math.random() - 0.5) * 0.5,
+            }
+          }
+          return event
+        })
+        setEvents(eventsWithCoords)
+      }
+    } catch (error) {
+      console.error('Error loading events:', error)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const loadCategories = async () => {
+    try {
+      const token = localStorage.getItem('authToken')
+      const response = await fetch(`${API_URL}/api/config/categories?type=event`, {
+        headers: { 'Authorization': `Bearer ${token}` },
+      })
+      if (response.ok) {
+        const data = await response.json()
+        setCategories(data.data || [])
+      }
+    } catch (error) {
+      console.error('Error loading categories:', error)
+    }
+  }
+
+  // Stats
+  const stats = useMemo(() => {
+    return {
+      total: events.length,
+      critical: events.filter(e => e.severity === 'critical').length,
+      high: events.filter(e => e.severity === 'high').length,
+      medium: events.filter(e => e.severity === 'medium').length,
+      low: events.filter(e => e.severity === 'low').length,
+    }
+  }, [events])
+
+  return (
+    <div className="space-y-6">
+      {/* Custom styles for cluster markers */}
+      <style>{`
+        .custom-cluster-icon {
+          background: transparent !important;
+        }
+        .cluster-marker {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          border-radius: 50%;
+          font-weight: 600;
+          color: white;
+          border: 3px solid white;
+          box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+        }
+        .cluster-small {
+          width: 36px;
+          height: 36px;
+          font-size: 12px;
+          background: #3b82f6;
+        }
+        .cluster-medium {
+          width: 44px;
+          height: 44px;
+          font-size: 14px;
+          background: #f59e0b;
+        }
+        .cluster-large {
+          width: 52px;
+          height: 52px;
+          font-size: 16px;
+          background: #ef4444;
+        }
+        .leaflet-popup-content-wrapper {
+          border-radius: 12px;
+        }
+        .leaflet-popup-content {
+          margin: 8px;
+        }
+      `}</style>
+
+      {/* Header */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-display font-bold text-slate-800">
+            {t('map.title', 'Carte des événements')}
+          </h1>
+          <p className="text-slate-500 text-sm mt-1">
+            Visualisez la répartition géographique des événements sanitaires
+          </p>
+        </div>
+        <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2 text-sm">
+            <span className="font-medium text-slate-700">{stats.total} événements</span>
+          </div>
+          <button
+            onClick={loadEvents}
+            className="p-2.5 text-slate-600 hover:bg-slate-100 rounded-xl transition-colors"
+            title="Actualiser"
+          >
+            <RefreshCw className={`w-5 h-5 ${loading ? 'animate-spin' : ''}`} />
+          </button>
+        </div>
+      </div>
+
+      {/* Filters */}
+      <div className="bg-white rounded-2xl border border-slate-200 p-4">
+        <div className="flex flex-wrap gap-4">
+          <select
+            value={filterPeriod}
+            onChange={(e) => setFilterPeriod(e.target.value)}
+            className="px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+          >
+            <option value="7">7 derniers jours</option>
+            <option value="30">30 derniers jours</option>
+            <option value="90">3 derniers mois</option>
+            <option value="180">6 derniers mois</option>
+            <option value="365">Cette année</option>
+          </select>
+
+          <select
+            value={filterStatus}
+            onChange={(e) => setFilterStatus(e.target.value)}
+            className="px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+          >
+            <option value="">Tous les statuts</option>
+            <option value="REPORTED">Signalé</option>
+            <option value="INVESTIGATING">En cours</option>
+            <option value="CONFIRMED">Confirmé</option>
+            <option value="RESOLVED">Résolu</option>
+          </select>
+
+          <select
+            value={filterSeverity}
+            onChange={(e) => setFilterSeverity(e.target.value)}
+            className="px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+          >
+            <option value="">Toutes les sévérités</option>
+            <option value="critical">Critique</option>
+            <option value="high">Élevée</option>
+            <option value="medium">Moyenne</option>
+            <option value="low">Faible</option>
+          </select>
+
+          <select
+            value={filterCategory}
+            onChange={(e) => setFilterCategory(e.target.value)}
+            className="px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+          >
+            <option value="">Toutes les catégories</option>
+            {categories.map(cat => (
+              <option key={cat.id} value={cat.id}>{cat.name}</option>
+            ))}
+          </select>
+
+          <button
+            onClick={() => {
+              setFilterStatus('')
+              setFilterSeverity('')
+              setFilterCategory('')
+              setFilterPeriod('30')
+            }}
+            className="px-4 py-2.5 text-sm text-slate-600 hover:bg-slate-100 rounded-xl transition-colors"
+          >
+            Réinitialiser
+          </button>
+        </div>
+      </div>
+
+      {/* Map Container */}
+      <div className="relative bg-white rounded-2xl border border-slate-200 overflow-hidden" style={{ height: '600px' }}>
+        {loading && (
+          <div className="absolute inset-0 bg-white/80 z-[1000] flex items-center justify-center">
+            <RefreshCw className="w-8 h-8 text-primary-600 animate-spin" />
+          </div>
+        )}
+
+        <MapContainer
+          center={mapCenter}
+          zoom={mapZoom}
+          style={{ height: '100%', width: '100%' }}
+          scrollWheelZoom={true}
+        >
+          <TileLayer
+            attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+            url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+          />
+          <MarkerClusterGroup events={events} />
+        </MapContainer>
+
+        {/* Legend */}
+        {showLegend && (
+          <div className="absolute bottom-4 left-4 bg-white rounded-xl shadow-lg border border-slate-200 p-4 z-[1000]">
+            <div className="flex items-center justify-between mb-3">
+              <h4 className="font-semibold text-sm text-slate-800">Légende</h4>
+              <button
+                onClick={() => setShowLegend(false)}
+                className="p-1 text-slate-400 hover:text-slate-600"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="space-y-2">
+              <div className="flex items-center gap-2">
+                <div className="w-4 h-4 rounded-full bg-red-600" />
+                <span className="text-xs text-slate-600">Critique ({stats.critical})</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="w-4 h-4 rounded-full bg-orange-500" />
+                <span className="text-xs text-slate-600">Élevée ({stats.high})</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="w-4 h-4 rounded-full bg-yellow-500" />
+                <span className="text-xs text-slate-600">Moyenne ({stats.medium})</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="w-4 h-4 rounded-full bg-green-500" />
+                <span className="text-xs text-slate-600">Faible ({stats.low})</span>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Show legend button */}
+        {!showLegend && (
+          <button
+            onClick={() => setShowLegend(true)}
+            className="absolute bottom-4 left-4 bg-white rounded-xl shadow-lg border border-slate-200 p-3 z-[1000] hover:bg-slate-50 transition-colors"
+            title="Afficher la légende"
+          >
+            <Layers className="w-5 h-5 text-slate-600" />
+          </button>
+        )}
+
+        {/* Stats Panel */}
+        <div className="absolute top-4 right-4 bg-white rounded-xl shadow-lg border border-slate-200 p-4 z-[1000]">
+          <h4 className="font-semibold text-sm text-slate-800 mb-3">Statistiques</h4>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="text-center">
+              <div className="text-2xl font-bold text-slate-800">{stats.total}</div>
+              <div className="text-xs text-slate-500">Total</div>
+            </div>
+            <div className="text-center">
+              <div className="text-2xl font-bold text-red-600">{stats.critical}</div>
+              <div className="text-xs text-slate-500">Critiques</div>
+            </div>
+            <div className="text-center">
+              <div className="text-2xl font-bold text-orange-500">{stats.high}</div>
+              <div className="text-xs text-slate-500">Élevés</div>
+            </div>
+            <div className="text-center">
+              <div className="text-2xl font-bold text-yellow-500">{stats.medium}</div>
+              <div className="text-xs text-slate-500">Moyens</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Region Summary */}
+      <div className="bg-white rounded-2xl border border-slate-200 p-6">
+        <h3 className="text-lg font-semibold text-slate-800 mb-4">Répartition par région</h3>
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+          {CAMEROON_REGIONS.map(region => {
+            const regionEvents = events.filter(e =>
+              e.latitude && e.longitude &&
+              Math.abs(e.latitude - region.lat) < 0.5 &&
+              Math.abs(e.longitude - region.lng) < 0.5
+            )
+            return (
+              <div key={region.name} className="bg-slate-50 rounded-xl p-4 text-center">
+                <div className="text-2xl font-bold text-slate-800">{regionEvents.length}</div>
+                <div className="text-xs text-slate-500 mt-1">{region.name}</div>
+              </div>
+            )
+          })}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function PlaceholderPage({ title }: { title: string }) {
   const { t } = useTranslation()
 
@@ -16556,7 +17031,8 @@ function App() {
           {currentPage === 'events-received' && <EventsPage initialStatus="REPORTED" />}
           {currentPage === 'events-processed' && <EventsPage initialStatus="RESOLVED" />}
           {currentPage === 'events-scheduled' && <EventsPage initialStatus="CONFIRMED" />}
-          {!['dashboard', 'my-profile', 'users-management', 'users-groups', 'users-rights', 'settings-forms', 'settings-procedures', 'settings-categories', 'settings-doctypes', 'settings-origins', 'knowledge', 'config-schedule', 'config-system', 'analytics', 'reports', 'notifications', 'events-inprogress', 'events-received', 'events-processed', 'events-scheduled'].includes(currentPage) && (
+          {currentPage === 'events-map' && <EventsMapPage />}
+          {!['dashboard', 'my-profile', 'users-management', 'users-groups', 'users-rights', 'settings-forms', 'settings-procedures', 'settings-categories', 'settings-doctypes', 'settings-origins', 'knowledge', 'config-schedule', 'config-system', 'analytics', 'reports', 'notifications', 'events-inprogress', 'events-received', 'events-processed', 'events-scheduled', 'events-map'].includes(currentPage) && (
             <PlaceholderPage title={pageTitles[currentPage] || currentPage} />
           )}
         </main>
