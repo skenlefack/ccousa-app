@@ -5329,6 +5329,8 @@ function FormBuilderPage() {
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null)
   const [dragOverColumn, setDragOverColumn] = useState<number | null>(null)
   const [dragOverSection, setDragOverSection] = useState<string | null>(null)
+  // State for dragging existing fields
+  const [draggedField, setDraggedField] = useState<{ fieldId: string; sectionId: string; column: number } | null>(null)
   const [activeCategory, setActiveCategory] = useState('basic')
   const [searchComponent, setSearchComponent] = useState('')
   const [isSaving, setIsSaving] = useState(false)
@@ -5688,9 +5690,158 @@ function FormBuilderPage() {
 
   const handleDragEnd = () => {
     setDraggedComponent(null)
+    setDraggedField(null)
     setDragOverSection(null)
     setDragOverIndex(null)
     setDragOverColumn(null)
+  }
+
+  // Drag handlers for existing fields (reordering)
+  const handleFieldDragStart = (e: React.DragEvent, fieldId: string, sectionId: string, column: number) => {
+    e.stopPropagation()
+    setDraggedField({ fieldId, sectionId, column })
+    e.dataTransfer.effectAllowed = 'move'
+    e.dataTransfer.setData('text/plain', fieldId)
+    // Add a drag image effect
+    const target = e.target as HTMLElement
+    target.style.opacity = '0.5'
+  }
+
+  const handleFieldDragEnd = (e: React.DragEvent) => {
+    const target = e.target as HTMLElement
+    target.style.opacity = '1'
+    setDraggedField(null)
+    setDragOverSection(null)
+    setDragOverIndex(null)
+    setDragOverColumn(null)
+  }
+
+  const handleFieldDrop = (e: React.DragEvent, targetSectionId: string, targetIndex: number, targetColumn: number) => {
+    e.preventDefault()
+    e.stopPropagation()
+
+    if (draggedField && currentForm) {
+      const { fieldId, sectionId: sourceSectionId, column: sourceColumn } = draggedField
+
+      // Find the source field
+      const sourceSection = currentForm.sections.find(s => s.id === sourceSectionId)
+      const field = sourceSection?.fields.find(f => f.id === fieldId)
+      if (!field) return
+
+      // Create updated sections
+      const updatedSections = currentForm.sections.map(section => {
+        // Remove from source section
+        if (section.id === sourceSectionId) {
+          const newFields = section.fields.filter(f => f.id !== fieldId)
+
+          // If moving within the same section
+          if (section.id === targetSectionId) {
+            // Update field with new column
+            const updatedField = { ...field, column: targetColumn }
+
+            // Insert at the correct position within the target column
+            const targetColumnFields = newFields.filter(f => (f.column ?? 0) === targetColumn)
+            const otherFields = newFields.filter(f => (f.column ?? 0) !== targetColumn)
+
+            // Insert the field at the target index
+            const insertIndex = Math.min(targetIndex, targetColumnFields.length)
+            targetColumnFields.splice(insertIndex, 0, updatedField)
+
+            return { ...section, fields: [...otherFields, ...targetColumnFields] }
+          }
+
+          return { ...section, fields: newFields }
+        }
+
+        // Add to target section (if different from source)
+        if (section.id === targetSectionId && sourceSectionId !== targetSectionId) {
+          const updatedField = { ...field, column: targetColumn }
+          const targetColumnFields = section.fields.filter(f => (f.column ?? 0) === targetColumn)
+          const otherFields = section.fields.filter(f => (f.column ?? 0) !== targetColumn)
+
+          const insertIndex = Math.min(targetIndex, targetColumnFields.length)
+          targetColumnFields.splice(insertIndex, 0, updatedField)
+
+          return { ...section, fields: [...otherFields, ...targetColumnFields] }
+        }
+
+        return section
+      })
+
+      setCurrentForm({ ...currentForm, sections: updatedSections })
+    }
+
+    setDraggedField(null)
+    setDragOverSection(null)
+    setDragOverIndex(null)
+    setDragOverColumn(null)
+  }
+
+  // Section reordering
+  const moveSectionUp = (sectionIndex: number) => {
+    if (!currentForm || sectionIndex <= 0) return
+    const newSections = [...currentForm.sections]
+    const temp = newSections[sectionIndex]
+    newSections[sectionIndex] = newSections[sectionIndex - 1]
+    newSections[sectionIndex - 1] = temp
+    setCurrentForm({ ...currentForm, sections: newSections })
+  }
+
+  const moveSectionDown = (sectionIndex: number) => {
+    if (!currentForm || sectionIndex >= currentForm.sections.length - 1) return
+    const newSections = [...currentForm.sections]
+    const temp = newSections[sectionIndex]
+    newSections[sectionIndex] = newSections[sectionIndex + 1]
+    newSections[sectionIndex + 1] = temp
+    setCurrentForm({ ...currentForm, sections: newSections })
+  }
+
+  // Move field up within its column
+  const moveFieldUp = (sectionId: string, fieldId: string) => {
+    if (!currentForm) return
+    const updatedSections = currentForm.sections.map(section => {
+      if (section.id !== sectionId) return section
+      const field = section.fields.find(f => f.id === fieldId)
+      if (!field) return section
+
+      const column = field.column ?? 0
+      const columnFields = section.fields.filter(f => (f.column ?? 0) === column)
+      const otherFields = section.fields.filter(f => (f.column ?? 0) !== column)
+
+      const fieldIndex = columnFields.findIndex(f => f.id === fieldId)
+      if (fieldIndex <= 0) return section
+
+      const temp = columnFields[fieldIndex]
+      columnFields[fieldIndex] = columnFields[fieldIndex - 1]
+      columnFields[fieldIndex - 1] = temp
+
+      return { ...section, fields: [...otherFields, ...columnFields] }
+    })
+    setCurrentForm({ ...currentForm, sections: updatedSections })
+  }
+
+  // Move field down within its column
+  const moveFieldDown = (sectionId: string, fieldId: string) => {
+    if (!currentForm) return
+    const updatedSections = currentForm.sections.map(section => {
+      if (section.id !== sectionId) return section
+      const field = section.fields.find(f => f.id === fieldId)
+      if (!field) return section
+
+      const column = field.column ?? 0
+      const columnFields = section.fields.filter(f => (f.column ?? 0) === column)
+      const otherFields = section.fields.filter(f => (f.column ?? 0) !== column)
+
+      const fieldIndex = columnFields.findIndex(f => f.id === fieldId)
+      if (fieldIndex >= columnFields.length - 1) return section
+
+      const temp = columnFields[fieldIndex]
+      columnFields[fieldIndex] = columnFields[fieldIndex + 1]
+      columnFields[fieldIndex + 1] = temp
+
+      return { ...section, fields: [...otherFields, ...columnFields] }
+    })
+    setCurrentForm({ ...currentForm, sections: updatedSections })
   }
 
   // Filtrer les composants par recherche
@@ -6219,21 +6370,39 @@ function FormBuilderPage() {
                         </button>
                       ))}
                     </div>
+                    {/* Section reorder buttons */}
                     {currentForm.sections.length > 1 && (
-                      <button
-                        onClick={(e) => { e.stopPropagation(); deleteSection(section.id); }}
-                        className="w-8 h-8 flex items-center justify-center rounded-lg text-slate-400 hover:text-red-500 hover:bg-red-50 transition-colors"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
+                      <div className="flex items-center gap-1">
+                        <button
+                          onClick={(e) => { e.stopPropagation(); moveSectionUp(sectionIndex); }}
+                          disabled={sectionIndex === 0}
+                          className="w-8 h-8 flex items-center justify-center rounded-lg text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                          title="Monter la section"
+                        >
+                          <ChevronUp className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); moveSectionDown(sectionIndex); }}
+                          disabled={sectionIndex === currentForm.sections.length - 1}
+                          className="w-8 h-8 flex items-center justify-center rounded-lg text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                          title="Descendre la section"
+                        >
+                          <ChevronDown className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); deleteSection(section.id); }}
+                          className="w-8 h-8 flex items-center justify-center rounded-lg text-slate-400 hover:text-red-500 hover:bg-red-50 transition-colors"
+                          title="Supprimer la section"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
                     )}
                   </div>
                 </div>
 
                 {/* Section Fields with Visual Columns */}
                 <div className="p-4 min-h-[120px]">
-                  {/* Debug: affiche le nombre de colonnes */}
-                  <div className="text-xs text-orange-500 mb-2">Debug: {section.columns || 1} colonne(s)</div>
                   <div
                     className="grid"
                     style={{
@@ -6288,40 +6457,91 @@ function FormBuilderPage() {
                               columnFields.map((field, fieldIndex) => (
                                 <div
                                   key={field.id}
-                                  onDragOver={(e) => handleDragOver(e, section.id, fieldIndex, colIndex)}
-                                  onDrop={(e) => handleDrop(e, section.id, fieldIndex, colIndex)}
+                                  onDragOver={(e) => {
+                                    e.preventDefault()
+                                    e.stopPropagation()
+                                    setDragOverSection(section.id)
+                                    setDragOverIndex(fieldIndex)
+                                    setDragOverColumn(colIndex)
+                                  }}
+                                  onDrop={(e) => {
+                                    e.preventDefault()
+                                    e.stopPropagation()
+                                    if (draggedComponent) {
+                                      handleDrop(e, section.id, fieldIndex, colIndex)
+                                    } else if (draggedField) {
+                                      handleFieldDrop(e, section.id, fieldIndex, colIndex)
+                                    }
+                                  }}
                                 >
-                                  {dragOverSection === section.id && dragOverIndex === fieldIndex && dragOverColumn === colIndex && draggedComponent && (
-                                    <div className="h-12 border-2 border-dashed border-emerald-400 bg-emerald-50 rounded-lg mb-2 flex items-center justify-center">
-                                      <span className="text-xs text-emerald-600">Déposer ici</span>
+                                  {/* Drop indicator for new component or reordering */}
+                                  {dragOverSection === section.id && dragOverIndex === fieldIndex && dragOverColumn === colIndex && (draggedComponent || draggedField) && (
+                                    <div className={`h-12 border-2 border-dashed rounded-lg mb-2 flex items-center justify-center ${
+                                      draggedField ? 'border-blue-400 bg-blue-50' : 'border-emerald-400 bg-emerald-50'
+                                    }`}>
+                                      <span className={`text-xs ${draggedField ? 'text-blue-600' : 'text-emerald-600'}`}>
+                                        {draggedField ? 'Déplacer ici' : 'Déposer ici'}
+                                      </span>
                                     </div>
                                   )}
                                   <div
-                                    className={`group relative p-3 rounded-lg border-2 cursor-pointer transition-all ${
+                                    draggable
+                                    onDragStart={(e) => handleFieldDragStart(e, field.id, section.id, colIndex)}
+                                    onDragEnd={handleFieldDragEnd}
+                                    className={`group relative p-3 rounded-lg border-2 cursor-grab active:cursor-grabbing transition-all ${
                                       selectedField?.id === field.id
                                         ? 'border-emerald-400 bg-emerald-50/50 shadow-md'
+                                        : draggedField?.fieldId === field.id
+                                        ? 'border-blue-400 bg-blue-50/50 opacity-50'
                                         : 'border-transparent bg-white hover:border-slate-200 hover:shadow-sm'
                                     }`}
                                     onClick={() => { setSelectedField(field); setSelectedSection(section.id); }}
                                   >
+                                    {/* Drag Handle */}
+                                    <div className="absolute left-1 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity cursor-grab active:cursor-grabbing">
+                                      <GripVertical className="w-4 h-4 text-slate-400" />
+                                    </div>
+
                                     {/* Field Actions */}
                                     <div className="absolute top-1 right-1 flex gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity z-10">
+                                      {/* Move Up */}
+                                      {fieldIndex > 0 && (
+                                        <button
+                                          onClick={(e) => { e.stopPropagation(); moveFieldUp(section.id, field.id); }}
+                                          className="w-6 h-6 flex items-center justify-center rounded bg-white shadow-sm text-slate-400 hover:text-blue-600 transition-colors"
+                                          title="Monter"
+                                        >
+                                          <ChevronUp className="w-3 h-3" />
+                                        </button>
+                                      )}
+                                      {/* Move Down */}
+                                      {fieldIndex < columnFields.length - 1 && (
+                                        <button
+                                          onClick={(e) => { e.stopPropagation(); moveFieldDown(section.id, field.id); }}
+                                          className="w-6 h-6 flex items-center justify-center rounded bg-white shadow-sm text-slate-400 hover:text-blue-600 transition-colors"
+                                          title="Descendre"
+                                        >
+                                          <ChevronDown className="w-3 h-3" />
+                                        </button>
+                                      )}
                                       <button
                                         onClick={(e) => { e.stopPropagation(); duplicateField(section.id, field); }}
                                         className="w-6 h-6 flex items-center justify-center rounded bg-white shadow-sm text-slate-400 hover:text-emerald-600 transition-colors"
+                                        title="Dupliquer"
                                       >
                                         <Copy className="w-3 h-3" />
                                       </button>
                                       <button
                                         onClick={(e) => { e.stopPropagation(); deleteField(section.id, field.id); }}
                                         className="w-6 h-6 flex items-center justify-center rounded bg-white shadow-sm text-slate-400 hover:text-red-500 transition-colors"
+                                        title="Supprimer"
                                       >
                                         <Trash2 className="w-3 h-3" />
                                       </button>
                                     </div>
 
                                     {/* Field Preview */}
-                                    <div className="pr-14">
+                                    <div className="pl-5 pr-20">
                                       {!['heading', 'paragraph', 'divider'].includes(field.type) && (
                                         <label className="block text-xs font-medium text-slate-700 mb-1">
                                           {field.label}
@@ -6339,17 +6559,31 @@ function FormBuilderPage() {
                             )}
 
                             {/* Drop zone at the end of column */}
-                            {columnFields.length > 0 && draggedComponent && (
+                            {columnFields.length > 0 && (draggedComponent || draggedField) && (
                               <div
                                 className={`h-12 border-2 border-dashed rounded-lg transition-all flex items-center justify-center ${
                                   dragOverSection === section.id && dragOverIndex === columnFields.length && dragOverColumn === colIndex
-                                    ? 'border-emerald-400 bg-emerald-50'
+                                    ? draggedField ? 'border-blue-400 bg-blue-50' : 'border-emerald-400 bg-emerald-50'
                                     : 'border-slate-200 bg-slate-50/50'
                                 }`}
-                                onDragOver={(e) => handleDragOver(e, section.id, columnFields.length, colIndex)}
-                                onDrop={(e) => handleDrop(e, section.id, columnFields.length, colIndex)}
+                                onDragOver={(e) => {
+                                  e.preventDefault()
+                                  setDragOverSection(section.id)
+                                  setDragOverIndex(columnFields.length)
+                                  setDragOverColumn(colIndex)
+                                }}
+                                onDrop={(e) => {
+                                  e.preventDefault()
+                                  if (draggedComponent) {
+                                    handleDrop(e, section.id, columnFields.length, colIndex)
+                                  } else if (draggedField) {
+                                    handleFieldDrop(e, section.id, columnFields.length, colIndex)
+                                  }
+                                }}
                               >
-                                <span className="text-xs text-slate-400">+ Ajouter ici</span>
+                                <span className={`text-xs ${draggedField ? 'text-blue-500' : 'text-slate-400'}`}>
+                                  {draggedField ? 'Déplacer ici' : '+ Ajouter ici'}
+                                </span>
                               </div>
                             )}
                           </div>
