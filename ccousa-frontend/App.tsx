@@ -10688,6 +10688,1081 @@ function KnowledgeBasePage() {
 /* ============================================
    PLACEHOLDER PAGE
    ============================================ */
+/* ============================================
+   REPORTS PAGE
+   ============================================ */
+interface ReportData {
+  id: string
+  name: string
+  description?: string
+  type: 'events' | 'procedures' | 'forms' | 'users' | 'knowledge' | 'custom'
+  parameters?: Record<string, unknown>[]
+  columns?: { key: string; label: string; type: string }[]
+  filters?: Record<string, unknown>[]
+  isTemplate: boolean
+  isScheduled: boolean
+  schedule?: {
+    frequency: 'daily' | 'weekly' | 'monthly' | 'quarterly'
+    dayOfWeek?: number
+    dayOfMonth?: number
+    time: string
+    recipients: string[]
+    format: 'pdf' | 'excel' | 'csv'
+    isActive: boolean
+  }
+  lastRunAt?: string
+  createdBy?: string
+  createdAt: string
+}
+
+const REPORT_TYPES = [
+  { value: 'events', label: 'Événements', icon: Activity, color: 'text-red-600 bg-red-100' },
+  { value: 'procedures', label: 'Procédures', icon: ClipboardList, color: 'text-blue-600 bg-blue-100' },
+  { value: 'forms', label: 'Formulaires', icon: FileText, color: 'text-green-600 bg-green-100' },
+  { value: 'users', label: 'Utilisateurs', icon: Users, color: 'text-purple-600 bg-purple-100' },
+  { value: 'knowledge', label: 'Base de connaissance', icon: BookOpen, color: 'text-amber-600 bg-amber-100' },
+  { value: 'custom', label: 'Personnalisé', icon: Settings, color: 'text-slate-600 bg-slate-100' },
+]
+
+const SCHEDULE_FREQUENCIES = [
+  { value: 'daily', label: 'Quotidien' },
+  { value: 'weekly', label: 'Hebdomadaire' },
+  { value: 'monthly', label: 'Mensuel' },
+  { value: 'quarterly', label: 'Trimestriel' },
+]
+
+const DAYS_OF_WEEK = [
+  { value: 0, label: 'Dimanche' },
+  { value: 1, label: 'Lundi' },
+  { value: 2, label: 'Mardi' },
+  { value: 3, label: 'Mercredi' },
+  { value: 4, label: 'Jeudi' },
+  { value: 5, label: 'Vendredi' },
+  { value: 6, label: 'Samedi' },
+]
+
+function ReportsPage() {
+  const { t } = useTranslation()
+  const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
+
+  // State
+  const [currentView, setCurrentView] = useState<'list' | 'form' | 'run'>('list')
+  const [reports, setReports] = useState<ReportData[]>([])
+  const [templates, setTemplates] = useState<ReportData[]>([])
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+  const [running, setRunning] = useState(false)
+  const [searchTerm, setSearchTerm] = useState('')
+  const [filterType, setFilterType] = useState<string>('')
+  const [filterScheduled, setFilterScheduled] = useState<string>('')
+  const [activeTab, setActiveTab] = useState<'reports' | 'templates' | 'scheduled'>('reports')
+
+  // Edit state
+  const [editingReport, setEditingReport] = useState<ReportData | null>(null)
+  const [selectedReport, setSelectedReport] = useState<ReportData | null>(null)
+  const [showDeleteModal, setShowDeleteModal] = useState(false)
+  const [showScheduleModal, setShowScheduleModal] = useState(false)
+  const [reportResult, setReportResult] = useState<{
+    reportName: string
+    generatedAt: string
+    data: Record<string, unknown>[]
+    summary: Record<string, number>
+  } | null>(null)
+
+  // Form state
+  const [formData, setFormData] = useState({
+    name: '',
+    description: '',
+    type: 'events' as ReportData['type'],
+    isTemplate: false,
+    columns: [] as { key: string; label: string; type: string }[],
+    filters: [] as Record<string, unknown>[],
+  })
+
+  // Schedule form state
+  const [scheduleData, setScheduleData] = useState({
+    frequency: 'weekly' as 'daily' | 'weekly' | 'monthly' | 'quarterly',
+    dayOfWeek: 1,
+    dayOfMonth: 1,
+    time: '09:00',
+    recipients: '',
+    format: 'pdf' as 'pdf' | 'excel' | 'csv',
+    isActive: true,
+  })
+
+  // Run parameters state
+  const [runParams, setRunParams] = useState({
+    startDate: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+    endDate: new Date().toISOString().split('T')[0],
+    format: 'pdf' as 'pdf' | 'excel' | 'csv',
+  })
+
+  // Load data
+  useEffect(() => {
+    loadReports()
+  }, [])
+
+  const loadReports = async () => {
+    setLoading(true)
+    try {
+      const token = localStorage.getItem('authToken')
+      const headers = { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` }
+
+      const [reportsRes, templatesRes] = await Promise.all([
+        fetch(`${API_URL}/api/analytics/reports?isTemplate=false`, { headers }),
+        fetch(`${API_URL}/api/analytics/reports?isTemplate=true`, { headers }),
+      ])
+
+      if (reportsRes.ok) {
+        const data = await reportsRes.json()
+        setReports(data.data || [])
+      }
+      if (templatesRes.ok) {
+        const data = await templatesRes.json()
+        setTemplates(data.data || [])
+      }
+    } catch (error) {
+      console.error('Error loading reports:', error)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleCreateReport = () => {
+    setEditingReport(null)
+    setFormData({
+      name: '',
+      description: '',
+      type: 'events',
+      isTemplate: activeTab === 'templates',
+      columns: [],
+      filters: [],
+    })
+    setCurrentView('form')
+  }
+
+  const handleEditReport = (report: ReportData) => {
+    setEditingReport(report)
+    setFormData({
+      name: report.name,
+      description: report.description || '',
+      type: report.type,
+      isTemplate: report.isTemplate,
+      columns: report.columns || [],
+      filters: report.filters || [],
+    })
+    setCurrentView('form')
+  }
+
+  const handleSaveReport = async () => {
+    if (!formData.name.trim()) return
+    setSaving(true)
+    try {
+      const token = localStorage.getItem('authToken')
+      const url = editingReport
+        ? `${API_URL}/api/analytics/reports/${editingReport.id}`
+        : `${API_URL}/api/analytics/reports`
+      const method = editingReport ? 'PUT' : 'POST'
+
+      const response = await fetch(url, {
+        method,
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify({
+          name: formData.name,
+          description: formData.description,
+          type: formData.type,
+          isTemplate: formData.isTemplate,
+          columns: formData.columns,
+          filters: formData.filters,
+        }),
+      })
+
+      if (response.ok) {
+        await loadReports()
+        setCurrentView('list')
+      }
+    } catch (error) {
+      console.error('Error saving report:', error)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const handleDeleteReport = async () => {
+    if (!selectedReport) return
+    setSaving(true)
+    try {
+      const token = localStorage.getItem('authToken')
+      const response = await fetch(`${API_URL}/api/analytics/reports/${selectedReport.id}`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${token}` },
+      })
+
+      if (response.ok) {
+        await loadReports()
+        setShowDeleteModal(false)
+        setSelectedReport(null)
+      }
+    } catch (error) {
+      console.error('Error deleting report:', error)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const handleRunReport = async (report: ReportData) => {
+    setSelectedReport(report)
+    setRunParams({
+      startDate: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+      endDate: new Date().toISOString().split('T')[0],
+      format: 'pdf',
+    })
+    setCurrentView('run')
+  }
+
+  const executeReport = async () => {
+    if (!selectedReport) return
+    setRunning(true)
+    try {
+      const token = localStorage.getItem('authToken')
+      const response = await fetch(`${API_URL}/api/analytics/reports/${selectedReport.id}/run`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify(runParams),
+      })
+
+      if (response.ok) {
+        const data = await response.json()
+        setReportResult(data.data)
+      }
+    } catch (error) {
+      console.error('Error running report:', error)
+    } finally {
+      setRunning(false)
+    }
+  }
+
+  const handleExportReport = async (format: 'pdf' | 'excel' | 'csv') => {
+    if (!selectedReport) return
+    try {
+      const token = localStorage.getItem('authToken')
+      const response = await fetch(`${API_URL}/api/analytics/export/report/${selectedReport.id}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify({ format }),
+      })
+
+      if (response.ok) {
+        const data = await response.json()
+        if (data.data?.downloadUrl) {
+          window.open(`${API_URL}${data.data.downloadUrl}`, '_blank')
+        }
+      }
+    } catch (error) {
+      console.error('Error exporting report:', error)
+    }
+  }
+
+  const handleScheduleReport = (report: ReportData) => {
+    setSelectedReport(report)
+    if (report.schedule) {
+      setScheduleData({
+        frequency: report.schedule.frequency,
+        dayOfWeek: report.schedule.dayOfWeek || 1,
+        dayOfMonth: report.schedule.dayOfMonth || 1,
+        time: report.schedule.time,
+        recipients: report.schedule.recipients.join(', '),
+        format: report.schedule.format,
+        isActive: report.schedule.isActive,
+      })
+    } else {
+      setScheduleData({
+        frequency: 'weekly',
+        dayOfWeek: 1,
+        dayOfMonth: 1,
+        time: '09:00',
+        recipients: '',
+        format: 'pdf',
+        isActive: true,
+      })
+    }
+    setShowScheduleModal(true)
+  }
+
+  const saveSchedule = async () => {
+    if (!selectedReport) return
+    setSaving(true)
+    try {
+      const token = localStorage.getItem('authToken')
+      const response = await fetch(`${API_URL}/api/analytics/reports/${selectedReport.id}/schedule`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify({
+          frequency: scheduleData.frequency,
+          dayOfWeek: scheduleData.frequency === 'weekly' ? scheduleData.dayOfWeek : undefined,
+          dayOfMonth: scheduleData.frequency === 'monthly' || scheduleData.frequency === 'quarterly' ? scheduleData.dayOfMonth : undefined,
+          time: scheduleData.time,
+          recipients: scheduleData.recipients.split(',').map(r => r.trim()).filter(Boolean),
+          format: scheduleData.format,
+          isActive: scheduleData.isActive,
+        }),
+      })
+
+      if (response.ok) {
+        await loadReports()
+        setShowScheduleModal(false)
+      }
+    } catch (error) {
+      console.error('Error scheduling report:', error)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const removeSchedule = async () => {
+    if (!selectedReport) return
+    setSaving(true)
+    try {
+      const token = localStorage.getItem('authToken')
+      const response = await fetch(`${API_URL}/api/analytics/reports/${selectedReport.id}/schedule`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${token}` },
+      })
+
+      if (response.ok) {
+        await loadReports()
+        setShowScheduleModal(false)
+      }
+    } catch (error) {
+      console.error('Error removing schedule:', error)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  // Filter reports
+  const getFilteredData = () => {
+    let data = activeTab === 'templates' ? templates : reports
+    if (activeTab === 'scheduled') {
+      data = reports.filter(r => r.isScheduled)
+    }
+
+    return data.filter(report => {
+      const matchesSearch = !searchTerm ||
+        report.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        report.description?.toLowerCase().includes(searchTerm.toLowerCase())
+      const matchesType = !filterType || report.type === filterType
+      const matchesScheduled = !filterScheduled ||
+        (filterScheduled === 'scheduled' && report.isScheduled) ||
+        (filterScheduled === 'not-scheduled' && !report.isScheduled)
+      return matchesSearch && matchesType && matchesScheduled
+    })
+  }
+
+  const getReportTypeInfo = (type: string) => {
+    return REPORT_TYPES.find(t => t.value === type) || REPORT_TYPES[5]
+  }
+
+  const filteredData = getFilteredData()
+
+  // Report Form View
+  if (currentView === 'form') {
+    return (
+      <div className="space-y-6">
+        {/* Header */}
+        <div className="flex items-center gap-4">
+          <button
+            onClick={() => setCurrentView('list')}
+            className="p-2 text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
+          >
+            <ArrowLeft className="w-5 h-5" />
+          </button>
+          <div>
+            <h1 className="text-2xl font-display font-bold text-slate-800">
+              {editingReport ? 'Modifier le rapport' : 'Nouveau rapport'}
+            </h1>
+            <p className="text-slate-500 text-sm mt-1">
+              {formData.isTemplate ? 'Ce rapport sera enregistré comme modèle' : 'Créer un nouveau rapport'}
+            </p>
+          </div>
+        </div>
+
+        {/* Form */}
+        <div className="bg-white rounded-2xl p-6 border border-slate-200 space-y-6">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-2">
+                Nom du rapport *
+              </label>
+              <input
+                type="text"
+                value={formData.name}
+                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500"
+                placeholder="Ex: Rapport mensuel des événements"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-2">
+                Type de rapport *
+              </label>
+              <select
+                value={formData.type}
+                onChange={(e) => setFormData({ ...formData, type: e.target.value as ReportData['type'] })}
+                className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500"
+              >
+                {REPORT_TYPES.map(type => (
+                  <option key={type.value} value={type.value}>{type.label}</option>
+                ))}
+              </select>
+            </div>
+
+            <div className="lg:col-span-2">
+              <label className="block text-sm font-medium text-slate-700 mb-2">
+                Description
+              </label>
+              <textarea
+                value={formData.description}
+                onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                rows={3}
+                className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500 resize-none"
+                placeholder="Description détaillée du rapport..."
+              />
+            </div>
+          </div>
+
+          {/* Report Type Specific Options */}
+          <div className="border-t border-slate-200 pt-6">
+            <h3 className="text-lg font-semibold text-slate-800 mb-4">Options du rapport</h3>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {formData.type === 'events' && (
+                <>
+                  <label className="flex items-center gap-3 p-4 bg-slate-50 rounded-xl cursor-pointer hover:bg-slate-100 transition-colors">
+                    <input type="checkbox" className="w-5 h-5 text-primary-600 rounded" defaultChecked />
+                    <span className="text-sm text-slate-700">Inclure les statistiques</span>
+                  </label>
+                  <label className="flex items-center gap-3 p-4 bg-slate-50 rounded-xl cursor-pointer hover:bg-slate-100 transition-colors">
+                    <input type="checkbox" className="w-5 h-5 text-primary-600 rounded" defaultChecked />
+                    <span className="text-sm text-slate-700">Grouper par catégorie</span>
+                  </label>
+                  <label className="flex items-center gap-3 p-4 bg-slate-50 rounded-xl cursor-pointer hover:bg-slate-100 transition-colors">
+                    <input type="checkbox" className="w-5 h-5 text-primary-600 rounded" />
+                    <span className="text-sm text-slate-700">Inclure graphiques</span>
+                  </label>
+                </>
+              )}
+              {formData.type === 'users' && (
+                <>
+                  <label className="flex items-center gap-3 p-4 bg-slate-50 rounded-xl cursor-pointer hover:bg-slate-100 transition-colors">
+                    <input type="checkbox" className="w-5 h-5 text-primary-600 rounded" defaultChecked />
+                    <span className="text-sm text-slate-700">Activité des utilisateurs</span>
+                  </label>
+                  <label className="flex items-center gap-3 p-4 bg-slate-50 rounded-xl cursor-pointer hover:bg-slate-100 transition-colors">
+                    <input type="checkbox" className="w-5 h-5 text-primary-600 rounded" />
+                    <span className="text-sm text-slate-700">Connexions récentes</span>
+                  </label>
+                </>
+              )}
+            </div>
+          </div>
+
+          {/* Template option */}
+          <div className="border-t border-slate-200 pt-6">
+            <label className="flex items-center gap-3 p-4 bg-primary-50 rounded-xl cursor-pointer hover:bg-primary-100 transition-colors">
+              <input
+                type="checkbox"
+                checked={formData.isTemplate}
+                onChange={(e) => setFormData({ ...formData, isTemplate: e.target.checked })}
+                className="w-5 h-5 text-primary-600 rounded"
+              />
+              <div>
+                <span className="text-sm font-medium text-primary-800">Enregistrer comme modèle</span>
+                <p className="text-xs text-primary-600 mt-0.5">Ce rapport pourra être réutilisé pour créer d'autres rapports</p>
+              </div>
+            </label>
+          </div>
+
+          {/* Actions */}
+          <div className="flex justify-end gap-3 pt-4 border-t border-slate-200">
+            <button
+              onClick={() => setCurrentView('list')}
+              className="px-6 py-3 text-slate-600 hover:bg-slate-100 rounded-xl transition-colors"
+            >
+              Annuler
+            </button>
+            <button
+              onClick={handleSaveReport}
+              disabled={saving || !formData.name.trim()}
+              className="px-6 py-3 bg-primary-600 text-white rounded-xl hover:bg-primary-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+            >
+              {saving ? (
+                <>
+                  <RefreshCw className="w-5 h-5 animate-spin" />
+                  Enregistrement...
+                </>
+              ) : (
+                <>
+                  <Save className="w-5 h-5" />
+                  Enregistrer
+                </>
+              )}
+            </button>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  // Run Report View
+  if (currentView === 'run' && selectedReport) {
+    const typeInfo = getReportTypeInfo(selectedReport.type)
+    const TypeIcon = typeInfo.icon
+
+    return (
+      <div className="space-y-6">
+        {/* Header */}
+        <div className="flex items-center gap-4">
+          <button
+            onClick={() => { setCurrentView('list'); setReportResult(null) }}
+            className="p-2 text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
+          >
+            <ArrowLeft className="w-5 h-5" />
+          </button>
+          <div className="flex-1">
+            <h1 className="text-2xl font-display font-bold text-slate-800">
+              {selectedReport.name}
+            </h1>
+            <p className="text-slate-500 text-sm mt-1">{selectedReport.description}</p>
+          </div>
+          <div className={`p-3 rounded-xl ${typeInfo.color}`}>
+            <TypeIcon className="w-6 h-6" />
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          {/* Parameters */}
+          <div className="bg-white rounded-2xl p-6 border border-slate-200">
+            <h3 className="text-lg font-semibold text-slate-800 mb-4">Paramètres</h3>
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">
+                  Date de début
+                </label>
+                <input
+                  type="date"
+                  value={runParams.startDate}
+                  onChange={(e) => setRunParams({ ...runParams, startDate: e.target.value })}
+                  className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">
+                  Date de fin
+                </label>
+                <input
+                  type="date"
+                  value={runParams.endDate}
+                  onChange={(e) => setRunParams({ ...runParams, endDate: e.target.value })}
+                  className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">
+                  Format d'export
+                </label>
+                <select
+                  value={runParams.format}
+                  onChange={(e) => setRunParams({ ...runParams, format: e.target.value as 'pdf' | 'excel' | 'csv' })}
+                  className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500"
+                >
+                  <option value="pdf">PDF</option>
+                  <option value="excel">Excel</option>
+                  <option value="csv">CSV</option>
+                </select>
+              </div>
+
+              <button
+                onClick={executeReport}
+                disabled={running}
+                className="w-full px-6 py-3 bg-primary-600 text-white rounded-xl hover:bg-primary-700 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+              >
+                {running ? (
+                  <>
+                    <RefreshCw className="w-5 h-5 animate-spin" />
+                    Génération...
+                  </>
+                ) : (
+                  <>
+                    <Play className="w-5 h-5" />
+                    Générer le rapport
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+
+          {/* Results */}
+          <div className="lg:col-span-2 bg-white rounded-2xl p-6 border border-slate-200">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold text-slate-800">Résultats</h3>
+              {reportResult && (
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => handleExportReport('pdf')}
+                    className="px-3 py-2 text-sm text-slate-600 hover:bg-slate-100 rounded-lg transition-colors flex items-center gap-1"
+                  >
+                    <Download className="w-4 h-4" />
+                    PDF
+                  </button>
+                  <button
+                    onClick={() => handleExportReport('excel')}
+                    className="px-3 py-2 text-sm text-slate-600 hover:bg-slate-100 rounded-lg transition-colors flex items-center gap-1"
+                  >
+                    <Download className="w-4 h-4" />
+                    Excel
+                  </button>
+                  <button
+                    onClick={() => handleExportReport('csv')}
+                    className="px-3 py-2 text-sm text-slate-600 hover:bg-slate-100 rounded-lg transition-colors flex items-center gap-1"
+                  >
+                    <Download className="w-4 h-4" />
+                    CSV
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {!reportResult ? (
+              <div className="flex flex-col items-center justify-center py-16 text-center">
+                <div className="w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center mb-4">
+                  <BarChart3 className="w-8 h-8 text-slate-400" />
+                </div>
+                <p className="text-slate-500">Configurez les paramètres et cliquez sur "Générer" pour voir les résultats</p>
+              </div>
+            ) : (
+              <div className="space-y-6">
+                {/* Summary */}
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  {Object.entries(reportResult.summary).map(([key, value]) => (
+                    <div key={key} className="bg-slate-50 rounded-xl p-4">
+                      <p className="text-xs text-slate-500 uppercase tracking-wide">{key.replace(/([A-Z])/g, ' $1').trim()}</p>
+                      <p className="text-2xl font-bold text-slate-800 mt-1">{value}</p>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Generated info */}
+                <div className="flex items-center gap-4 text-sm text-slate-500 border-t border-slate-200 pt-4">
+                  <span className="flex items-center gap-1">
+                    <Clock className="w-4 h-4" />
+                    Généré le {new Date(reportResult.generatedAt).toLocaleString('fr-FR')}
+                  </span>
+                  <span className="flex items-center gap-1">
+                    <FileText className="w-4 h-4" />
+                    {reportResult.data.length} lignes
+                  </span>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  // List View
+  return (
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-display font-bold text-slate-800">{t('reports.title', 'Rapports')}</h1>
+          <p className="text-slate-500 text-sm mt-1">Générez et planifiez des rapports personnalisés</p>
+        </div>
+        <button
+          onClick={handleCreateReport}
+          className="px-4 py-2.5 bg-primary-600 text-white rounded-xl hover:bg-primary-700 transition-colors flex items-center gap-2"
+        >
+          <Plus className="w-5 h-5" />
+          Nouveau rapport
+        </button>
+      </div>
+
+      {/* Tabs */}
+      <div className="flex gap-2 border-b border-slate-200">
+        <button
+          onClick={() => setActiveTab('reports')}
+          className={`px-4 py-3 text-sm font-medium transition-colors relative ${
+            activeTab === 'reports' ? 'text-primary-600' : 'text-slate-500 hover:text-slate-700'
+          }`}
+        >
+          Mes rapports
+          <span className="ml-2 px-2 py-0.5 text-xs bg-slate-100 rounded-full">{reports.length}</span>
+          {activeTab === 'reports' && (
+            <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary-600" />
+          )}
+        </button>
+        <button
+          onClick={() => setActiveTab('templates')}
+          className={`px-4 py-3 text-sm font-medium transition-colors relative ${
+            activeTab === 'templates' ? 'text-primary-600' : 'text-slate-500 hover:text-slate-700'
+          }`}
+        >
+          Modèles
+          <span className="ml-2 px-2 py-0.5 text-xs bg-slate-100 rounded-full">{templates.length}</span>
+          {activeTab === 'templates' && (
+            <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary-600" />
+          )}
+        </button>
+        <button
+          onClick={() => setActiveTab('scheduled')}
+          className={`px-4 py-3 text-sm font-medium transition-colors relative ${
+            activeTab === 'scheduled' ? 'text-primary-600' : 'text-slate-500 hover:text-slate-700'
+          }`}
+        >
+          Planifiés
+          <span className="ml-2 px-2 py-0.5 text-xs bg-slate-100 rounded-full">
+            {reports.filter(r => r.isScheduled).length}
+          </span>
+          {activeTab === 'scheduled' && (
+            <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary-600" />
+          )}
+        </button>
+      </div>
+
+      {/* Filters */}
+      <div className="flex flex-wrap gap-4">
+        <div className="flex-1 min-w-[200px]">
+          <div className="relative">
+            <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 text-slate-400 w-5 h-5" />
+            <input
+              type="text"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              placeholder="Rechercher un rapport..."
+              className="w-full pl-12 pr-4 py-3 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500"
+            />
+          </div>
+        </div>
+        <select
+          value={filterType}
+          onChange={(e) => setFilterType(e.target.value)}
+          className="px-4 py-3 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500"
+        >
+          <option value="">Tous les types</option>
+          {REPORT_TYPES.map(type => (
+            <option key={type.value} value={type.value}>{type.label}</option>
+          ))}
+        </select>
+        <button
+          onClick={loadReports}
+          className="p-3 text-slate-600 hover:bg-slate-100 rounded-xl transition-colors"
+          title="Actualiser"
+        >
+          <RefreshCw className="w-5 h-5" />
+        </button>
+      </div>
+
+      {/* Reports Grid */}
+      {loading ? (
+        <div className="flex items-center justify-center py-20">
+          <RefreshCw className="w-8 h-8 text-primary-600 animate-spin" />
+        </div>
+      ) : filteredData.length === 0 ? (
+        <div className="bg-white rounded-2xl border border-slate-200 p-16 text-center">
+          <div className="w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-4">
+            <FileText className="w-8 h-8 text-slate-400" />
+          </div>
+          <h3 className="text-lg font-semibold text-slate-800 mb-2">
+            {searchTerm ? 'Aucun rapport trouvé' : 'Aucun rapport'}
+          </h3>
+          <p className="text-slate-500 mb-6">
+            {searchTerm
+              ? 'Essayez de modifier vos critères de recherche'
+              : activeTab === 'templates'
+                ? 'Créez votre premier modèle de rapport'
+                : 'Créez votre premier rapport pour commencer'}
+          </p>
+          <button
+            onClick={handleCreateReport}
+            className="px-6 py-3 bg-primary-600 text-white rounded-xl hover:bg-primary-700 transition-colors inline-flex items-center gap-2"
+          >
+            <Plus className="w-5 h-5" />
+            Créer un rapport
+          </button>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {filteredData.map((report) => {
+            const typeInfo = getReportTypeInfo(report.type)
+            const TypeIcon = typeInfo.icon
+
+            return (
+              <div
+                key={report.id}
+                className="bg-white rounded-2xl border border-slate-200 p-6 hover:shadow-lg transition-shadow"
+              >
+                <div className="flex items-start justify-between mb-4">
+                  <div className={`p-3 rounded-xl ${typeInfo.color}`}>
+                    <TypeIcon className="w-6 h-6" />
+                  </div>
+                  <div className="relative">
+                    <button
+                      onClick={() => setSelectedReport(selectedReport?.id === report.id ? null : report)}
+                      className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
+                    >
+                      <MoreVertical className="w-5 h-5" />
+                    </button>
+                    {selectedReport?.id === report.id && (
+                      <div className="absolute right-0 top-full mt-1 w-48 bg-white rounded-xl shadow-xl border border-slate-200 py-2 z-10">
+                        <button
+                          onClick={() => { handleRunReport(report); setSelectedReport(null) }}
+                          className="w-full px-4 py-2 text-left text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2"
+                        >
+                          <Play className="w-4 h-4" />
+                          Exécuter
+                        </button>
+                        <button
+                          onClick={() => { handleEditReport(report); setSelectedReport(null) }}
+                          className="w-full px-4 py-2 text-left text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2"
+                        >
+                          <Edit3 className="w-4 h-4" />
+                          Modifier
+                        </button>
+                        <button
+                          onClick={() => { handleScheduleReport(report); setSelectedReport(null) }}
+                          className="w-full px-4 py-2 text-left text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2"
+                        >
+                          <Calendar className="w-4 h-4" />
+                          Planifier
+                        </button>
+                        <hr className="my-2 border-slate-200" />
+                        <button
+                          onClick={() => setShowDeleteModal(true)}
+                          className="w-full px-4 py-2 text-left text-sm text-red-600 hover:bg-red-50 flex items-center gap-2"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                          Supprimer
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                <h3 className="text-lg font-semibold text-slate-800 mb-1">{report.name}</h3>
+                <p className="text-sm text-slate-500 line-clamp-2 mb-4">{report.description || 'Pas de description'}</p>
+
+                <div className="flex flex-wrap gap-2 mb-4">
+                  <span className="px-2 py-1 text-xs bg-slate-100 text-slate-600 rounded-lg">
+                    {typeInfo.label}
+                  </span>
+                  {report.isScheduled && (
+                    <span className="px-2 py-1 text-xs bg-green-100 text-green-600 rounded-lg flex items-center gap-1">
+                      <Clock className="w-3 h-3" />
+                      Planifié
+                    </span>
+                  )}
+                  {report.isTemplate && (
+                    <span className="px-2 py-1 text-xs bg-purple-100 text-purple-600 rounded-lg">
+                      Modèle
+                    </span>
+                  )}
+                </div>
+
+                <div className="flex items-center justify-between text-xs text-slate-500 pt-4 border-t border-slate-100">
+                  <span>Créé le {new Date(report.createdAt).toLocaleDateString('fr-FR')}</span>
+                  {report.lastRunAt && (
+                    <span>Exécuté le {new Date(report.lastRunAt).toLocaleDateString('fr-FR')}</span>
+                  )}
+                </div>
+
+                <button
+                  onClick={() => handleRunReport(report)}
+                  className="w-full mt-4 px-4 py-2.5 bg-primary-50 text-primary-600 rounded-xl hover:bg-primary-100 transition-colors flex items-center justify-center gap-2"
+                >
+                  <Play className="w-4 h-4" />
+                  Exécuter
+                </button>
+              </div>
+            )
+          })}
+        </div>
+      )}
+
+      {/* Delete Modal */}
+      {showDeleteModal && selectedReport && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-2xl p-6 w-full max-w-md mx-4">
+            <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
+              <Trash2 className="w-6 h-6 text-red-600" />
+            </div>
+            <h3 className="text-lg font-semibold text-slate-800 text-center mb-2">
+              Supprimer le rapport
+            </h3>
+            <p className="text-slate-500 text-center mb-6">
+              Êtes-vous sûr de vouloir supprimer le rapport "{selectedReport.name}" ? Cette action est irréversible.
+            </p>
+            <div className="flex gap-3">
+              <button
+                onClick={() => { setShowDeleteModal(false); setSelectedReport(null) }}
+                className="flex-1 px-4 py-3 text-slate-600 hover:bg-slate-100 rounded-xl transition-colors"
+              >
+                Annuler
+              </button>
+              <button
+                onClick={handleDeleteReport}
+                disabled={saving}
+                className="flex-1 px-4 py-3 bg-red-600 text-white rounded-xl hover:bg-red-700 transition-colors disabled:opacity-50"
+              >
+                {saving ? 'Suppression...' : 'Supprimer'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Schedule Modal */}
+      {showScheduleModal && selectedReport && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-2xl p-6 w-full max-w-lg mx-4 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between mb-6">
+              <h3 className="text-lg font-semibold text-slate-800">Planifier le rapport</h3>
+              <button
+                onClick={() => setShowScheduleModal(false)}
+                className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">Fréquence</label>
+                <select
+                  value={scheduleData.frequency}
+                  onChange={(e) => setScheduleData({ ...scheduleData, frequency: e.target.value as typeof scheduleData.frequency })}
+                  className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500"
+                >
+                  {SCHEDULE_FREQUENCIES.map(freq => (
+                    <option key={freq.value} value={freq.value}>{freq.label}</option>
+                  ))}
+                </select>
+              </div>
+
+              {scheduleData.frequency === 'weekly' && (
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-2">Jour de la semaine</label>
+                  <select
+                    value={scheduleData.dayOfWeek}
+                    onChange={(e) => setScheduleData({ ...scheduleData, dayOfWeek: parseInt(e.target.value) })}
+                    className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500"
+                  >
+                    {DAYS_OF_WEEK.map(day => (
+                      <option key={day.value} value={day.value}>{day.label}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
+              {(scheduleData.frequency === 'monthly' || scheduleData.frequency === 'quarterly') && (
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-2">Jour du mois</label>
+                  <select
+                    value={scheduleData.dayOfMonth}
+                    onChange={(e) => setScheduleData({ ...scheduleData, dayOfMonth: parseInt(e.target.value) })}
+                    className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500"
+                  >
+                    {Array.from({ length: 28 }, (_, i) => (
+                      <option key={i + 1} value={i + 1}>{i + 1}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">Heure d'exécution</label>
+                <input
+                  type="time"
+                  value={scheduleData.time}
+                  onChange={(e) => setScheduleData({ ...scheduleData, time: e.target.value })}
+                  className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">Format d'export</label>
+                <select
+                  value={scheduleData.format}
+                  onChange={(e) => setScheduleData({ ...scheduleData, format: e.target.value as typeof scheduleData.format })}
+                  className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500"
+                >
+                  <option value="pdf">PDF</option>
+                  <option value="excel">Excel</option>
+                  <option value="csv">CSV</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">
+                  Destinataires (emails séparés par des virgules)
+                </label>
+                <textarea
+                  value={scheduleData.recipients}
+                  onChange={(e) => setScheduleData({ ...scheduleData, recipients: e.target.value })}
+                  rows={2}
+                  className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500 resize-none"
+                  placeholder="email1@example.com, email2@example.com"
+                />
+              </div>
+
+              <label className="flex items-center gap-3 p-4 bg-slate-50 rounded-xl cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={scheduleData.isActive}
+                  onChange={(e) => setScheduleData({ ...scheduleData, isActive: e.target.checked })}
+                  className="w-5 h-5 text-primary-600 rounded"
+                />
+                <span className="text-sm text-slate-700">Activer la planification</span>
+              </label>
+            </div>
+
+            <div className="flex gap-3 mt-6 pt-4 border-t border-slate-200">
+              {selectedReport.isScheduled && (
+                <button
+                  onClick={removeSchedule}
+                  disabled={saving}
+                  className="px-4 py-3 text-red-600 hover:bg-red-50 rounded-xl transition-colors"
+                >
+                  Supprimer planification
+                </button>
+              )}
+              <div className="flex-1" />
+              <button
+                onClick={() => setShowScheduleModal(false)}
+                className="px-4 py-3 text-slate-600 hover:bg-slate-100 rounded-xl transition-colors"
+              >
+                Annuler
+              </button>
+              <button
+                onClick={saveSchedule}
+                disabled={saving}
+                className="px-6 py-3 bg-primary-600 text-white rounded-xl hover:bg-primary-700 transition-colors disabled:opacity-50"
+              >
+                {saving ? 'Enregistrement...' : 'Enregistrer'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 function PlaceholderPage({ title }: { title: string }) {
   const { t } = useTranslation()
 
@@ -15475,12 +16550,13 @@ function App() {
           {currentPage === 'config-schedule' && <WorkSchedulesPage />}
           {currentPage === 'config-system' && <SystemConfigPage />}
           {currentPage === 'analytics' && <AnalyticsPage />}
+          {currentPage === 'reports' && <ReportsPage />}
           {currentPage === 'notifications' && <NotificationsPage />}
           {currentPage === 'events-inprogress' && <EventsPage initialStatus="INVESTIGATING" />}
           {currentPage === 'events-received' && <EventsPage initialStatus="REPORTED" />}
           {currentPage === 'events-processed' && <EventsPage initialStatus="RESOLVED" />}
           {currentPage === 'events-scheduled' && <EventsPage initialStatus="CONFIRMED" />}
-          {!['dashboard', 'my-profile', 'users-management', 'users-groups', 'users-rights', 'settings-forms', 'settings-procedures', 'settings-categories', 'settings-doctypes', 'settings-origins', 'knowledge', 'config-schedule', 'config-system', 'analytics', 'notifications', 'events-inprogress', 'events-received', 'events-processed', 'events-scheduled'].includes(currentPage) && (
+          {!['dashboard', 'my-profile', 'users-management', 'users-groups', 'users-rights', 'settings-forms', 'settings-procedures', 'settings-categories', 'settings-doctypes', 'settings-origins', 'knowledge', 'config-schedule', 'config-system', 'analytics', 'reports', 'notifications', 'events-inprogress', 'events-received', 'events-processed', 'events-scheduled'].includes(currentPage) && (
             <PlaceholderPage title={pageTitles[currentPage] || currentPage} />
           )}
         </main>
