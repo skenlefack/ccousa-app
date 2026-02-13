@@ -53,6 +53,203 @@ declare module 'jspdf' {
 }
 
 /* ============================================
+   WEBSOCKET HOOK FOR REAL-TIME NOTIFICATIONS
+   ============================================ */
+interface WebSocketMessage {
+  type: 'notification' | 'event_update' | 'user_activity' | 'system'
+  data: {
+    id?: string
+    title?: string
+    message?: string
+    priority?: 'low' | 'normal' | 'high' | 'urgent'
+    [key: string]: unknown
+  }
+  timestamp: string
+}
+
+function useWebSocket(url: string | null, options?: {
+  onMessage?: (message: WebSocketMessage) => void
+  onConnect?: () => void
+  onDisconnect?: () => void
+  reconnectInterval?: number
+  maxReconnectAttempts?: number
+}) {
+  const [isConnected, setIsConnected] = useState(false)
+  const [lastMessage, setLastMessage] = useState<WebSocketMessage | null>(null)
+  const [reconnectAttempts, setReconnectAttempts] = useState(0)
+  const wsRef = useRef<WebSocket | null>(null)
+  const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+
+  const maxAttempts = options?.maxReconnectAttempts ?? 5
+  const reconnectInterval = options?.reconnectInterval ?? 5000
+
+  const connect = () => {
+    if (!url || wsRef.current?.readyState === WebSocket.OPEN) return
+
+    try {
+      const ws = new WebSocket(url)
+
+      ws.onopen = () => {
+        setIsConnected(true)
+        setReconnectAttempts(0)
+        options?.onConnect?.()
+        console.log('[WebSocket] Connected to', url)
+      }
+
+      ws.onmessage = (event) => {
+        try {
+          const message: WebSocketMessage = JSON.parse(event.data)
+          setLastMessage(message)
+          options?.onMessage?.(message)
+        } catch (e) {
+          console.error('[WebSocket] Failed to parse message:', e)
+        }
+      }
+
+      ws.onclose = () => {
+        setIsConnected(false)
+        options?.onDisconnect?.()
+        console.log('[WebSocket] Disconnected')
+
+        // Attempt reconnection
+        if (reconnectAttempts < maxAttempts) {
+          reconnectTimeoutRef.current = setTimeout(() => {
+            setReconnectAttempts(prev => prev + 1)
+            connect()
+          }, reconnectInterval)
+        }
+      }
+
+      ws.onerror = (error) => {
+        console.error('[WebSocket] Error:', error)
+      }
+
+      wsRef.current = ws
+    } catch (error) {
+      console.error('[WebSocket] Connection failed:', error)
+    }
+  }
+
+  const disconnect = () => {
+    if (reconnectTimeoutRef.current) {
+      clearTimeout(reconnectTimeoutRef.current)
+    }
+    if (wsRef.current) {
+      wsRef.current.close()
+      wsRef.current = null
+    }
+    setIsConnected(false)
+  }
+
+  const sendMessage = (message: unknown) => {
+    if (wsRef.current?.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify(message))
+    }
+  }
+
+  useEffect(() => {
+    connect()
+    return () => disconnect()
+  }, [url])
+
+  return {
+    isConnected,
+    lastMessage,
+    sendMessage,
+    reconnectAttempts,
+    connect,
+    disconnect
+  }
+}
+
+// Real-time notification store
+interface RealTimeNotification {
+  id: string
+  type: 'info' | 'success' | 'warning' | 'error' | 'event'
+  title: string
+  message: string
+  timestamp: Date
+  isRead: boolean
+  data?: Record<string, unknown>
+}
+
+function useRealTimeNotifications() {
+  const [notifications, setNotifications] = useState<RealTimeNotification[]>([])
+  const [showToast, setShowToast] = useState(false)
+  const [latestNotification, setLatestNotification] = useState<RealTimeNotification | null>(null)
+
+  const addNotification = (notification: Omit<RealTimeNotification, 'id' | 'timestamp' | 'isRead'>) => {
+    const newNotification: RealTimeNotification = {
+      ...notification,
+      id: `notif-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+      timestamp: new Date(),
+      isRead: false
+    }
+    setNotifications(prev => [newNotification, ...prev.slice(0, 49)]) // Keep last 50
+    setLatestNotification(newNotification)
+    setShowToast(true)
+
+    // Play notification sound for urgent notifications
+    if (notification.type === 'error' || notification.type === 'warning') {
+      playNotificationSound()
+    }
+
+    // Auto-hide toast after 5 seconds
+    setTimeout(() => setShowToast(false), 5000)
+  }
+
+  const markAsRead = (id: string) => {
+    setNotifications(prev =>
+      prev.map(n => n.id === id ? { ...n, isRead: true } : n)
+    )
+  }
+
+  const markAllAsRead = () => {
+    setNotifications(prev => prev.map(n => ({ ...n, isRead: true })))
+  }
+
+  const clearAll = () => {
+    setNotifications([])
+  }
+
+  const unreadCount = notifications.filter(n => !n.isRead).length
+
+  return {
+    notifications,
+    unreadCount,
+    showToast,
+    latestNotification,
+    addNotification,
+    markAsRead,
+    markAllAsRead,
+    clearAll,
+    dismissToast: () => setShowToast(false)
+  }
+}
+
+// Simple notification sound
+function playNotificationSound() {
+  try {
+    const audioContext = new (window.AudioContext || (window as typeof window & { webkitAudioContext: typeof AudioContext }).webkitAudioContext)()
+    const oscillator = audioContext.createOscillator()
+    const gainNode = audioContext.createGain()
+
+    oscillator.connect(gainNode)
+    gainNode.connect(audioContext.destination)
+
+    oscillator.frequency.value = 880
+    oscillator.type = 'sine'
+    gainNode.gain.value = 0.1
+
+    oscillator.start()
+    gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.3)
+    oscillator.stop(audioContext.currentTime + 0.3)
+  } catch (e) {
+    // Audio not supported or blocked
+  }
+}
+
+/* ============================================
    USER SESSION INTERFACE
    ============================================ */
 interface UserSession {
@@ -876,9 +1073,65 @@ const statusColors: Record<UserStatus, { bg: string; dot: string; ring: string }
 }
 
 /* ============================================
+   TOAST NOTIFICATION COMPONENT
+   ============================================ */
+function NotificationToast({ notification, onDismiss }: {
+  notification: RealTimeNotification | null
+  onDismiss: () => void
+}) {
+  if (!notification) return null
+
+  const typeConfig = {
+    info: { bg: 'bg-blue-500', icon: <Info className="w-5 h-5" /> },
+    success: { bg: 'bg-emerald-500', icon: <CheckCircle className="w-5 h-5" /> },
+    warning: { bg: 'bg-amber-500', icon: <AlertTriangle className="w-5 h-5" /> },
+    error: { bg: 'bg-red-500', icon: <AlertCircle className="w-5 h-5" /> },
+    event: { bg: 'bg-purple-500', icon: <Activity className="w-5 h-5" /> },
+  }
+
+  const config = typeConfig[notification.type] || typeConfig.info
+
+  return (
+    <div className="fixed top-4 right-4 z-[100] animate-slide-up">
+      <div className={`flex items-start gap-3 px-4 py-3 ${config.bg} text-white rounded-xl shadow-2xl max-w-sm`}>
+        <div className="flex-shrink-0 mt-0.5">
+          {config.icon}
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="font-semibold text-sm">{notification.title}</p>
+          <p className="text-sm text-white/90 mt-0.5 line-clamp-2">{notification.message}</p>
+        </div>
+        <button
+          onClick={onDismiss}
+          className="flex-shrink-0 p-1 hover:bg-white/20 rounded-lg transition-colors"
+        >
+          <X className="w-4 h-4" />
+        </button>
+      </div>
+    </div>
+  )
+}
+
+/* ============================================
    HEADER
    ============================================ */
-function Header({ onMenuToggle, currentPage, onLogout, onProfileClick, onNotificationsClick, onNavigate, userSession, darkMode, toggleDarkMode }: { onMenuToggle: () => void; currentPage: string; onLogout: () => void; onProfileClick: () => void; onNotificationsClick: () => void; onNavigate: (page: string) => void; userSession: UserSession | null; darkMode: boolean; toggleDarkMode: () => void }) {
+function Header({ onMenuToggle, currentPage, onLogout, onProfileClick, onNotificationsClick, onNavigate, userSession, darkMode, toggleDarkMode, realTimeNotifs }: {
+  onMenuToggle: () => void
+  currentPage: string
+  onLogout: () => void
+  onProfileClick: () => void
+  onNotificationsClick: () => void
+  onNavigate: (page: string) => void
+  userSession: UserSession | null
+  darkMode: boolean
+  toggleDarkMode: () => void
+  realTimeNotifs?: {
+    unreadCount: number
+    showToast: boolean
+    latestNotification: RealTimeNotification | null
+    dismissToast: () => void
+  }
+}) {
   const { t } = useTranslation()
   const [userMenuOpen, setUserMenuOpen] = useState(false)
   const [userStatus, setUserStatus] = useState<UserStatus>('available')
@@ -887,6 +1140,9 @@ function Header({ onMenuToggle, currentPage, onLogout, onProfileClick, onNotific
   const [unreadCount, setUnreadCount] = useState(0)
   const menuRef = useRef<HTMLDivElement>(null)
   const notifRef = useRef<HTMLDivElement>(null)
+
+  // Combined unread count (API + real-time)
+  const totalUnread = unreadCount + (realTimeNotifs?.unreadCount || 0)
 
   // Global search state
   const [searchQuery, setSearchQuery] = useState('')
@@ -1125,9 +1381,18 @@ function Header({ onMenuToggle, currentPage, onLogout, onProfileClick, onNotific
   }, [])
 
   return (
-    <header className="sticky top-0 z-30 h-[72px] bg-white/80 backdrop-blur-xl border-b border-slate-200/80">
-      <div className="h-full flex items-center justify-between px-4 lg:px-6">
-        {/* Titre de la page */}
+    <>
+      {/* Real-time notification toast */}
+      {realTimeNotifs?.showToast && realTimeNotifs.latestNotification && (
+        <NotificationToast
+          notification={realTimeNotifs.latestNotification}
+          onDismiss={realTimeNotifs.dismissToast}
+        />
+      )}
+
+      <header className="sticky top-0 z-30 h-[72px] bg-white/80 backdrop-blur-xl border-b border-slate-200/80">
+        <div className="h-full flex items-center justify-between px-4 lg:px-6">
+          {/* Titre de la page */}
         <div className="flex items-center gap-4">
           <button onClick={onMenuToggle} className="lg:hidden p-2.5 hover:bg-slate-100 rounded-xl">
             <Menu className="w-5 h-5 text-slate-600" />
@@ -1343,9 +1608,9 @@ function Header({ onMenuToggle, currentPage, onLogout, onProfileClick, onNotific
               className="relative p-3 hover:bg-slate-100 rounded-xl transition-colors"
             >
               <Bell className={`w-6 h-6 ${notificationsOpen ? 'text-emerald-600' : 'text-slate-600'}`} />
-              {unreadCount > 0 && (
-                <span className="absolute top-1 right-1 w-5 h-5 flex items-center justify-center text-[10px] font-bold bg-red-500 text-white rounded-full">
-                  {unreadCount > 9 ? '9+' : unreadCount}
+              {totalUnread > 0 && (
+                <span className="absolute top-1 right-1 w-5 h-5 flex items-center justify-center text-[10px] font-bold bg-red-500 text-white rounded-full animate-pulse">
+                  {totalUnread > 9 ? '9+' : totalUnread}
                 </span>
               )}
             </button>
@@ -1559,6 +1824,7 @@ function Header({ onMenuToggle, currentPage, onLogout, onProfileClick, onNotific
         </div>
       </div>
     </header>
+    </>
   )
 }
 
@@ -18318,6 +18584,41 @@ function App() {
 
   const toggleDarkMode = () => setDarkMode(!darkMode)
 
+  // Real-time notifications
+  const realTimeNotifs = useRealTimeNotifications()
+
+  // WebSocket connection for real-time updates
+  const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
+  const wsUrl = API_URL.replace('http', 'ws') + '/ws/notifications'
+
+  useWebSocket(wsUrl, {
+    onMessage: (message) => {
+      if (message.type === 'notification') {
+        realTimeNotifs.addNotification({
+          type: (message.data.priority === 'urgent' || message.data.priority === 'high') ? 'warning' : 'info',
+          title: message.data.title as string || 'Nouvelle notification',
+          message: message.data.message as string || '',
+          data: message.data
+        })
+      } else if (message.type === 'event_update') {
+        realTimeNotifs.addNotification({
+          type: 'event',
+          title: 'Mise à jour événement',
+          message: message.data.message as string || 'Un événement a été mis à jour',
+          data: message.data
+        })
+      }
+    },
+    onConnect: () => {
+      console.log('[App] WebSocket connected for real-time notifications')
+    },
+    onDisconnect: () => {
+      console.log('[App] WebSocket disconnected')
+    },
+    reconnectInterval: 10000,
+    maxReconnectAttempts: 3
+  })
+
   // Vérifier le token au chargement
   const checkAuthToken = (): boolean => {
     try {
@@ -18465,7 +18766,23 @@ function App() {
         onMobileClose={() => setMobileMenuOpen(false)}
       />
       <div className={`transition-all duration-300 ${sidebarCollapsed ? 'lg:ml-16' : 'lg:ml-[270px]'}`}>
-        <Header onMenuToggle={() => setMobileMenuOpen(true)} currentPage={currentPage} onLogout={handleLogout} onProfileClick={() => setCurrentPage('my-profile')} onNotificationsClick={() => setCurrentPage('notifications')} onNavigate={setCurrentPage} userSession={userSession} darkMode={darkMode} toggleDarkMode={toggleDarkMode} />
+        <Header
+          onMenuToggle={() => setMobileMenuOpen(true)}
+          currentPage={currentPage}
+          onLogout={handleLogout}
+          onProfileClick={() => setCurrentPage('my-profile')}
+          onNotificationsClick={() => setCurrentPage('notifications')}
+          onNavigate={setCurrentPage}
+          userSession={userSession}
+          darkMode={darkMode}
+          toggleDarkMode={toggleDarkMode}
+          realTimeNotifs={{
+            unreadCount: realTimeNotifs.unreadCount,
+            showToast: realTimeNotifs.showToast,
+            latestNotification: realTimeNotifs.latestNotification,
+            dismissToast: realTimeNotifs.dismissToast
+          }}
+        />
         <main className="p-4 lg:p-8">
           {currentPage === 'dashboard' && <Dashboard userSession={userSession} onNavigate={setCurrentPage} />}
           {currentPage === 'my-profile' && <MyProfilePage userSession={userSession} onUpdateSession={setUserSession} />}
