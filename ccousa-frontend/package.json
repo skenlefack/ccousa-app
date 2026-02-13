@@ -16,6 +16,8 @@
     "@types/leaflet.markercluster": "^1.5.6",
     "axios": "^1.13.4",
     "clsx": "^2.1.1",
+    "docx": "^9.5.2",
+    "file-saver": "^2.0.5",
     "framer-motion": "^12.29.2",
     "i18next": "^23.7.16",
     "jspdf": "^4.1.0",
@@ -34,6 +36,7 @@
     "zustand": "^5.0.10"
   },
   "devDependencies": {
+    "@types/file-saver": "^2.0.7",
     "@types/react": "^18.2.43",
     "@types/react-dom": "^18.2.17",
     "@vitejs/plugin-react": "^4.2.1",

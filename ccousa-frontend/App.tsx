@@ -29,11 +29,27 @@ import {
   Database, Lock as LockIcon, Unlock, Key, Fingerprint,
   ScanLine, QrCode, Barcode, Tag, Tags, Bookmark, Flag, Award, Trophy, Moon, Sun,
   Target, Crosshair, Lightbulb, HelpCircle, AlertCircle,
-  Inbox, Send, RotateCcw, CheckCircle, FileDown
+  Inbox, Send, RotateCcw, CheckCircle, FileDown, Command, Keyboard
 } from 'lucide-react'
 import jsPDF from 'jspdf'
 import 'jspdf-autotable'
 import * as XLSX from 'xlsx'
+import {
+  Document,
+  Packer,
+  Paragraph,
+  TextRun,
+  Table,
+  TableRow,
+  TableCell,
+  WidthType,
+  AlignmentType,
+  HeadingLevel,
+  BorderStyle,
+  ShadingType,
+  PageBreak
+} from 'docx'
+import { saveAs } from 'file-saver'
 
 // Type declaration for jspdf-autotable
 declare module 'jspdf' {
@@ -247,6 +263,1472 @@ function playNotificationSound() {
   } catch (e) {
     // Audio not supported or blocked
   }
+}
+
+/* ============================================
+   DOCX EXPORT UTILITY
+   ============================================ */
+interface DocxExportOptions {
+  title: string
+  subtitle?: string
+  date?: string
+  data: Record<string, unknown>[]
+  columns: { key: string; label: string }[]
+  summary?: Record<string, number | string>
+}
+
+async function exportToDocx(options: DocxExportOptions): Promise<void> {
+  const { title, subtitle, date, data, columns, summary } = options
+
+  // Header section
+  const headerParagraphs: Paragraph[] = [
+    new Paragraph({
+      children: [
+        new TextRun({
+          text: title,
+          bold: true,
+          size: 48,
+          color: '10b981',
+        }),
+      ],
+      heading: HeadingLevel.HEADING_1,
+      alignment: AlignmentType.CENTER,
+      spacing: { after: 200 },
+    }),
+  ]
+
+  if (subtitle) {
+    headerParagraphs.push(
+      new Paragraph({
+        children: [
+          new TextRun({
+            text: subtitle,
+            size: 24,
+            color: '64748b',
+          }),
+        ],
+        alignment: AlignmentType.CENTER,
+        spacing: { after: 200 },
+      })
+    )
+  }
+
+  if (date) {
+    headerParagraphs.push(
+      new Paragraph({
+        children: [
+          new TextRun({
+            text: `Généré le: ${date}`,
+            size: 20,
+            italics: true,
+            color: '94a3b8',
+          }),
+        ],
+        alignment: AlignmentType.CENTER,
+        spacing: { after: 400 },
+      })
+    )
+  }
+
+  // Summary section if provided
+  const summaryParagraphs: Paragraph[] = []
+  if (summary && Object.keys(summary).length > 0) {
+    summaryParagraphs.push(
+      new Paragraph({
+        children: [
+          new TextRun({
+            text: 'Résumé',
+            bold: true,
+            size: 32,
+          }),
+        ],
+        heading: HeadingLevel.HEADING_2,
+        spacing: { before: 400, after: 200 },
+      })
+    )
+
+    Object.entries(summary).forEach(([key, value]) => {
+      const formattedKey = key.replace(/([A-Z])/g, ' $1').trim()
+      summaryParagraphs.push(
+        new Paragraph({
+          children: [
+            new TextRun({
+              text: `${formattedKey}: `,
+              bold: true,
+              size: 22,
+            }),
+            new TextRun({
+              text: String(value),
+              size: 22,
+            }),
+          ],
+          spacing: { after: 100 },
+          bullet: { level: 0 },
+        })
+      )
+    })
+
+    summaryParagraphs.push(
+      new Paragraph({
+        children: [],
+        spacing: { after: 400 },
+      })
+    )
+  }
+
+  // Data table section
+  const tableParagraphs: Paragraph[] = [
+    new Paragraph({
+      children: [
+        new TextRun({
+          text: 'Données',
+          bold: true,
+          size: 32,
+        }),
+      ],
+      heading: HeadingLevel.HEADING_2,
+      spacing: { before: 200, after: 200 },
+    }),
+  ]
+
+  // Create table rows
+  const headerRow = new TableRow({
+    children: columns.map(col =>
+      new TableCell({
+        children: [
+          new Paragraph({
+            children: [
+              new TextRun({
+                text: col.label,
+                bold: true,
+                size: 20,
+                color: 'ffffff',
+              }),
+            ],
+            alignment: AlignmentType.CENTER,
+          }),
+        ],
+        shading: {
+          fill: '10b981',
+          type: ShadingType.SOLID,
+        },
+        width: { size: Math.floor(100 / columns.length), type: WidthType.PERCENTAGE },
+      })
+    ),
+    tableHeader: true,
+  })
+
+  const dataRows = data.map((row, index) =>
+    new TableRow({
+      children: columns.map(col => {
+        const value = row[col.key]
+        const displayValue = value !== null && value !== undefined ? String(value) : '-'
+        return new TableCell({
+          children: [
+            new Paragraph({
+              children: [
+                new TextRun({
+                  text: displayValue,
+                  size: 18,
+                }),
+              ],
+            }),
+          ],
+          shading: index % 2 === 0
+            ? { fill: 'f8fafc', type: ShadingType.SOLID }
+            : undefined,
+          width: { size: Math.floor(100 / columns.length), type: WidthType.PERCENTAGE },
+        })
+      }),
+    })
+  )
+
+  const table = new Table({
+    rows: [headerRow, ...dataRows],
+    width: { size: 100, type: WidthType.PERCENTAGE },
+  })
+
+  // Create the document
+  const doc = new Document({
+    sections: [
+      {
+        properties: {},
+        children: [
+          ...headerParagraphs,
+          ...summaryParagraphs,
+          ...tableParagraphs,
+          table,
+          new Paragraph({
+            children: [],
+            spacing: { before: 400 },
+          }),
+          new Paragraph({
+            children: [
+              new TextRun({
+                text: 'Document généré par CCOUSA-APP',
+                size: 16,
+                color: '94a3b8',
+                italics: true,
+              }),
+            ],
+            alignment: AlignmentType.CENTER,
+          }),
+        ],
+      },
+    ],
+  })
+
+  // Generate and download the file
+  const blob = await Packer.toBlob(doc)
+  const fileName = `${title.replace(/[^a-zA-Z0-9]/g, '_')}_${new Date().toISOString().split('T')[0]}.docx`
+  saveAs(blob, fileName)
+}
+
+/* ============================================
+   REMINDER SYSTEM
+   ============================================ */
+interface Reminder {
+  id: string
+  eventId: string
+  eventTitle: string
+  eventCode: string
+  reminderTime: Date
+  reminderType: 'before_deadline' | 'custom'
+  minutesBefore: number
+  isTriggered: boolean
+  createdAt: Date
+}
+
+// =======================================
+// DRAG AND DROP HOOK FOR WIDGET ORDERING
+// =======================================
+function useDragDrop<T extends { id: string }>(
+  items: T[],
+  onReorder: (newItems: T[]) => void
+) {
+  const [draggedItem, setDraggedItem] = useState<T | null>(null)
+  const [dragOverItemId, setDragOverItemId] = useState<string | null>(null)
+
+  const handleDragStart = (e: React.DragEvent<HTMLDivElement>, item: T) => {
+    setDraggedItem(item)
+    e.dataTransfer.effectAllowed = 'move'
+    e.dataTransfer.setData('text/plain', item.id)
+    // Add a slight delay to allow the drag image to be created
+    setTimeout(() => {
+      const element = e.target as HTMLElement
+      element.classList.add('opacity-50')
+    }, 0)
+  }
+
+  const handleDragEnd = (e: React.DragEvent<HTMLDivElement>) => {
+    const element = e.target as HTMLElement
+    element.classList.remove('opacity-50')
+    setDraggedItem(null)
+    setDragOverItemId(null)
+  }
+
+  const handleDragOver = (e: React.DragEvent<HTMLDivElement>, item: T) => {
+    e.preventDefault()
+    e.dataTransfer.dropEffect = 'move'
+    if (draggedItem && draggedItem.id !== item.id) {
+      setDragOverItemId(item.id)
+    }
+  }
+
+  const handleDragLeave = () => {
+    setDragOverItemId(null)
+  }
+
+  const handleDrop = (e: React.DragEvent<HTMLDivElement>, targetItem: T) => {
+    e.preventDefault()
+    if (!draggedItem || draggedItem.id === targetItem.id) return
+
+    const currentIndex = items.findIndex(item => item.id === draggedItem.id)
+    const targetIndex = items.findIndex(item => item.id === targetItem.id)
+
+    if (currentIndex !== -1 && targetIndex !== -1) {
+      const newItems = [...items]
+      newItems.splice(currentIndex, 1)
+      newItems.splice(targetIndex, 0, draggedItem)
+      onReorder(newItems)
+    }
+
+    setDraggedItem(null)
+    setDragOverItemId(null)
+  }
+
+  return {
+    draggedItem,
+    dragOverItemId,
+    handleDragStart,
+    handleDragEnd,
+    handleDragOver,
+    handleDragLeave,
+    handleDrop,
+  }
+}
+
+// =======================================
+// PWA SERVICE WORKER HOOK
+// =======================================
+interface PWAStatus {
+  isOnline: boolean
+  isInstallable: boolean
+  isInstalled: boolean
+  hasUpdate: boolean
+  registration: ServiceWorkerRegistration | null
+}
+
+function usePWA() {
+  const [status, setStatus] = useState<PWAStatus>({
+    isOnline: navigator.onLine,
+    isInstallable: false,
+    isInstalled: window.matchMedia('(display-mode: standalone)').matches,
+    hasUpdate: false,
+    registration: null,
+  })
+  const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null)
+
+  // Register service worker
+  useEffect(() => {
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker
+        .register('/sw.js')
+        .then((registration) => {
+          console.log('[PWA] Service worker registered:', registration.scope)
+          setStatus(prev => ({ ...prev, registration }))
+
+          // Check for updates
+          registration.addEventListener('updatefound', () => {
+            const newWorker = registration.installing
+            if (newWorker) {
+              newWorker.addEventListener('statechange', () => {
+                if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                  console.log('[PWA] New version available')
+                  setStatus(prev => ({ ...prev, hasUpdate: true }))
+                }
+              })
+            }
+          })
+        })
+        .catch((error) => {
+          console.error('[PWA] Service worker registration failed:', error)
+        })
+    }
+
+    // Online/Offline status
+    const handleOnline = () => setStatus(prev => ({ ...prev, isOnline: true }))
+    const handleOffline = () => setStatus(prev => ({ ...prev, isOnline: false }))
+
+    window.addEventListener('online', handleOnline)
+    window.addEventListener('offline', handleOffline)
+
+    // Install prompt
+    const handleBeforeInstallPrompt = (e: Event) => {
+      e.preventDefault()
+      setDeferredPrompt(e as BeforeInstallPromptEvent)
+      setStatus(prev => ({ ...prev, isInstallable: true }))
+    }
+
+    window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt)
+
+    // App installed
+    const handleAppInstalled = () => {
+      setDeferredPrompt(null)
+      setStatus(prev => ({ ...prev, isInstallable: false, isInstalled: true }))
+      console.log('[PWA] App installed')
+    }
+
+    window.addEventListener('appinstalled', handleAppInstalled)
+
+    return () => {
+      window.removeEventListener('online', handleOnline)
+      window.removeEventListener('offline', handleOffline)
+      window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt)
+      window.removeEventListener('appinstalled', handleAppInstalled)
+    }
+  }, [])
+
+  // Install the PWA
+  const install = async () => {
+    if (!deferredPrompt) return false
+    deferredPrompt.prompt()
+    const { outcome } = await deferredPrompt.userChoice
+    setDeferredPrompt(null)
+    setStatus(prev => ({ ...prev, isInstallable: false }))
+    return outcome === 'accepted'
+  }
+
+  // Update the service worker
+  const update = () => {
+    if (status.registration?.waiting) {
+      status.registration.waiting.postMessage({ type: 'SKIP_WAITING' })
+      window.location.reload()
+    }
+  }
+
+  // Cache specific URLs
+  const cacheUrls = (urls: string[]) => {
+    if (status.registration?.active) {
+      status.registration.active.postMessage({
+        type: 'CACHE_URLS',
+        payload: urls,
+      })
+    }
+  }
+
+  return {
+    ...status,
+    install,
+    update,
+    cacheUrls,
+  }
+}
+
+// Type for beforeinstallprompt event
+interface BeforeInstallPromptEvent extends Event {
+  prompt: () => Promise<void>
+  userChoice: Promise<{ outcome: 'accepted' | 'dismissed' }>
+}
+
+function useReminders(onReminderTrigger: (reminder: Reminder) => void) {
+  const [reminders, setReminders] = useState<Reminder[]>(() => {
+    const saved = localStorage.getItem('event_reminders')
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved)
+        return parsed.map((r: Reminder) => ({
+          ...r,
+          reminderTime: new Date(r.reminderTime),
+          createdAt: new Date(r.createdAt)
+        }))
+      } catch {
+        return []
+      }
+    }
+    return []
+  })
+
+  // Save to localStorage
+  useEffect(() => {
+    localStorage.setItem('event_reminders', JSON.stringify(reminders))
+  }, [reminders])
+
+  // Check reminders every minute
+  useEffect(() => {
+    const checkReminders = () => {
+      const now = new Date()
+      setReminders(prev => {
+        const updated = prev.map(reminder => {
+          if (!reminder.isTriggered && new Date(reminder.reminderTime) <= now) {
+            onReminderTrigger(reminder)
+            return { ...reminder, isTriggered: true }
+          }
+          return reminder
+        })
+        return updated
+      })
+    }
+
+    // Check immediately and then every minute
+    checkReminders()
+    const interval = setInterval(checkReminders, 60000)
+    return () => clearInterval(interval)
+  }, [onReminderTrigger])
+
+  const addReminder = (
+    eventId: string,
+    eventTitle: string,
+    eventCode: string,
+    deadlineDate: Date,
+    minutesBefore: number
+  ) => {
+    const reminderTime = new Date(deadlineDate.getTime() - minutesBefore * 60000)
+
+    // Don't add if reminder time is in the past
+    if (reminderTime <= new Date()) {
+      return null
+    }
+
+    const newReminder: Reminder = {
+      id: `reminder-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+      eventId,
+      eventTitle,
+      eventCode,
+      reminderTime,
+      reminderType: 'before_deadline',
+      minutesBefore,
+      isTriggered: false,
+      createdAt: new Date()
+    }
+
+    setReminders(prev => [...prev, newReminder])
+    return newReminder
+  }
+
+  const removeReminder = (reminderId: string) => {
+    setReminders(prev => prev.filter(r => r.id !== reminderId))
+  }
+
+  const getRemindersForEvent = (eventId: string) => {
+    return reminders.filter(r => r.eventId === eventId && !r.isTriggered)
+  }
+
+  const clearTriggeredReminders = () => {
+    setReminders(prev => prev.filter(r => !r.isTriggered))
+  }
+
+  const upcomingReminders = reminders
+    .filter(r => !r.isTriggered)
+    .sort((a, b) => new Date(a.reminderTime).getTime() - new Date(b.reminderTime).getTime())
+
+  return {
+    reminders,
+    upcomingReminders,
+    addReminder,
+    removeReminder,
+    getRemindersForEvent,
+    clearTriggeredReminders
+  }
+}
+
+// Reminder configuration options
+const REMINDER_OPTIONS = [
+  { value: 15, label: '15 minutes avant' },
+  { value: 30, label: '30 minutes avant' },
+  { value: 60, label: '1 heure avant' },
+  { value: 120, label: '2 heures avant' },
+  { value: 1440, label: '1 jour avant' },
+  { value: 2880, label: '2 jours avant' },
+  { value: 10080, label: '1 semaine avant' },
+]
+
+/* ============================================
+   KEYBOARD SHORTCUTS SYSTEM
+   ============================================ */
+interface KeyboardShortcut {
+  key: string
+  description: string
+  category: 'navigation' | 'actions' | 'views' | 'general'
+  modifiers?: ('ctrl' | 'alt' | 'shift' | 'meta')[]
+  sequence?: string[] // For key sequences like 'g then d'
+}
+
+const KEYBOARD_SHORTCUTS: KeyboardShortcut[] = [
+  // General
+  { key: '?', description: 'Afficher les raccourcis clavier', category: 'general' },
+  { key: 'k', description: 'Recherche globale', category: 'general', modifiers: ['ctrl'] },
+  { key: 'Escape', description: 'Fermer le dialogue/modal', category: 'general' },
+  { key: 'd', description: 'Basculer le mode sombre', category: 'general', modifiers: ['alt'] },
+
+  // Navigation (g + key)
+  { key: 'g d', description: 'Aller au tableau de bord', category: 'navigation', sequence: ['g', 'd'] },
+  { key: 'g e', description: 'Aller aux événements en cours', category: 'navigation', sequence: ['g', 'e'] },
+  { key: 'g r', description: 'Aller aux rapports', category: 'navigation', sequence: ['g', 'r'] },
+  { key: 'g u', description: 'Aller aux utilisateurs', category: 'navigation', sequence: ['g', 'u'] },
+  { key: 'g p', description: 'Aller aux procédures', category: 'navigation', sequence: ['g', 'p'] },
+  { key: 'g c', description: 'Aller à la configuration', category: 'navigation', sequence: ['g', 'c'] },
+  { key: 'g k', description: 'Aller à la base de connaissances', category: 'navigation', sequence: ['g', 'k'] },
+  { key: 'g m', description: 'Aller à mon profil', category: 'navigation', sequence: ['g', 'm'] },
+
+  // Views
+  { key: 'v l', description: 'Vue liste des événements', category: 'views', sequence: ['v', 'l'] },
+  { key: 'v c', description: 'Vue calendrier', category: 'views', sequence: ['v', 'c'] },
+  { key: 'v k', description: 'Vue Kanban', category: 'views', sequence: ['v', 'k'] },
+  { key: 'v m', description: 'Vue carte', category: 'views', sequence: ['v', 'm'] },
+
+  // Actions
+  { key: 'n', description: 'Nouvel événement', category: 'actions' },
+  { key: 's', description: 'Basculer la barre latérale', category: 'actions' },
+  { key: '[', description: 'Page précédente', category: 'actions' },
+  { key: ']', description: 'Page suivante', category: 'actions' },
+]
+
+function useKeyboardShortcuts(handlers: {
+  onNavigate: (page: string) => void
+  onToggleSidebar: () => void
+  onToggleDarkMode: () => void
+  onOpenShortcutsModal: () => void
+  onOpenSearch: () => void
+  onNewEvent?: () => void
+}) {
+  const [keySequence, setKeySequence] = useState<string[]>([])
+  const sequenceTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+
+  useEffect(() => {
+    function handleKeyDown(event: KeyboardEvent) {
+      // Don't trigger shortcuts when typing in inputs
+      const target = event.target as HTMLElement
+      if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) {
+        // But allow Escape to close modals
+        if (event.key === 'Escape') {
+          // Let escape propagate for modal closing
+        } else {
+          return
+        }
+      }
+
+      // Handle modifier shortcuts
+      if (event.ctrlKey || event.metaKey) {
+        if (event.key === 'k') {
+          event.preventDefault()
+          handlers.onOpenSearch()
+          return
+        }
+      }
+
+      if (event.altKey) {
+        if (event.key === 'd') {
+          event.preventDefault()
+          handlers.onToggleDarkMode()
+          return
+        }
+      }
+
+      // Handle single key shortcuts
+      const key = event.key.toLowerCase()
+
+      // Help modal
+      if (key === '?' || (event.shiftKey && key === '/')) {
+        event.preventDefault()
+        handlers.onOpenShortcutsModal()
+        return
+      }
+
+      // Toggle sidebar
+      if (key === 's' && !event.ctrlKey && !event.metaKey && !event.altKey) {
+        event.preventDefault()
+        handlers.onToggleSidebar()
+        return
+      }
+
+      // New event
+      if (key === 'n' && !event.ctrlKey && !event.metaKey && !event.altKey) {
+        event.preventDefault()
+        handlers.onNewEvent?.()
+        return
+      }
+
+      // Handle key sequences (g+key, v+key)
+      if (key === 'g' || key === 'v') {
+        setKeySequence([key])
+        if (sequenceTimeoutRef.current) {
+          clearTimeout(sequenceTimeoutRef.current)
+        }
+        sequenceTimeoutRef.current = setTimeout(() => {
+          setKeySequence([])
+        }, 1000)
+        return
+      }
+
+      // Process second key in sequence
+      if (keySequence.length > 0) {
+        const fullSequence = [...keySequence, key]
+        const sequenceKey = fullSequence.join('')
+
+        // Clear sequence
+        setKeySequence([])
+        if (sequenceTimeoutRef.current) {
+          clearTimeout(sequenceTimeoutRef.current)
+        }
+
+        // Navigation shortcuts (g + key)
+        if (fullSequence[0] === 'g') {
+          switch (key) {
+            case 'd': handlers.onNavigate('dashboard'); break
+            case 'e': handlers.onNavigate('events-inprogress'); break
+            case 'r': handlers.onNavigate('reports'); break
+            case 'u': handlers.onNavigate('users-management'); break
+            case 'p': handlers.onNavigate('settings-procedures'); break
+            case 'c': handlers.onNavigate('config-system'); break
+            case 'k': handlers.onNavigate('knowledge'); break
+            case 'm': handlers.onNavigate('my-profile'); break
+          }
+        }
+
+        // View shortcuts (v + key)
+        if (fullSequence[0] === 'v') {
+          switch (key) {
+            case 'l': handlers.onNavigate('events-inprogress'); break
+            case 'c': handlers.onNavigate('events-calendar'); break
+            case 'k': handlers.onNavigate('events-kanban'); break
+            case 'm': handlers.onNavigate('events-map'); break
+          }
+        }
+      }
+    }
+
+    document.addEventListener('keydown', handleKeyDown)
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown)
+      if (sequenceTimeoutRef.current) {
+        clearTimeout(sequenceTimeoutRef.current)
+      }
+    }
+  }, [handlers, keySequence])
+
+  return { keySequence }
+}
+
+// Keyboard Shortcuts Help Modal
+function KeyboardShortcutsModal({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) {
+  const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0
+
+  useEffect(() => {
+    if (!isOpen) return
+
+    function handleEscape(event: KeyboardEvent) {
+      if (event.key === 'Escape') {
+        onClose()
+      }
+    }
+
+    document.addEventListener('keydown', handleEscape)
+    return () => document.removeEventListener('keydown', handleEscape)
+  }, [isOpen, onClose])
+
+  if (!isOpen) return null
+
+  const categories = {
+    general: { title: 'Général', icon: Keyboard },
+    navigation: { title: 'Navigation', icon: Navigation },
+    views: { title: 'Vues', icon: LayoutGrid },
+    actions: { title: 'Actions', icon: Zap }
+  }
+
+  const renderKey = (shortcut: KeyboardShortcut) => {
+    const parts: string[] = []
+
+    if (shortcut.modifiers?.includes('ctrl')) {
+      parts.push(isMac ? '⌘' : 'Ctrl')
+    }
+    if (shortcut.modifiers?.includes('alt')) {
+      parts.push(isMac ? '⌥' : 'Alt')
+    }
+    if (shortcut.modifiers?.includes('shift')) {
+      parts.push('⇧')
+    }
+
+    if (shortcut.sequence) {
+      return (
+        <div className="flex items-center gap-1">
+          {shortcut.sequence.map((k, i) => (
+            <span key={i} className="flex items-center gap-1">
+              <kbd className="px-2 py-1 text-xs font-mono bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300 rounded border border-slate-200 dark:border-slate-600 shadow-sm">
+                {k.toUpperCase()}
+              </kbd>
+              {i < shortcut.sequence!.length - 1 && (
+                <span className="text-slate-400 text-xs">puis</span>
+              )}
+            </span>
+          ))}
+        </div>
+      )
+    }
+
+    parts.push(shortcut.key === ' ' ? 'Espace' : shortcut.key.toUpperCase())
+
+    return (
+      <div className="flex items-center gap-1">
+        {parts.map((part, i) => (
+          <span key={i} className="flex items-center gap-1">
+            <kbd className="px-2 py-1 text-xs font-mono bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300 rounded border border-slate-200 dark:border-slate-600 shadow-sm">
+              {part}
+            </kbd>
+            {i < parts.length - 1 && <span className="text-slate-400">+</span>}
+          </span>
+        ))}
+      </div>
+    )
+  }
+
+  return (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+      {/* Backdrop */}
+      <div
+        className="absolute inset-0 bg-black/50 backdrop-blur-sm"
+        onClick={onClose}
+      />
+
+      {/* Modal */}
+      <div className="relative bg-white dark:bg-slate-800 rounded-2xl shadow-2xl max-w-2xl w-full max-h-[80vh] overflow-hidden animate-slide-up">
+        {/* Header */}
+        <div className="flex items-center justify-between p-6 border-b border-slate-200 dark:border-slate-700">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center">
+              <Keyboard className="w-5 h-5 text-white" />
+            </div>
+            <div>
+              <h2 className="text-lg font-bold text-slate-800 dark:text-slate-100">
+                Raccourcis Clavier
+              </h2>
+              <p className="text-sm text-slate-500 dark:text-slate-400">
+                Naviguez rapidement dans l'application
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={onClose}
+            className="p-2 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition-colors"
+          >
+            <X className="w-5 h-5 text-slate-500" />
+          </button>
+        </div>
+
+        {/* Content */}
+        <div className="p-6 overflow-y-auto max-h-[calc(80vh-120px)]">
+          <div className="grid gap-6">
+            {(Object.keys(categories) as Array<keyof typeof categories>).map(categoryKey => {
+              const category = categories[categoryKey]
+              const shortcuts = KEYBOARD_SHORTCUTS.filter(s => s.category === categoryKey)
+              const IconComponent = category.icon
+
+              return (
+                <div key={categoryKey}>
+                  <div className="flex items-center gap-2 mb-3">
+                    <IconComponent className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+                    <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-300 uppercase tracking-wide">
+                      {category.title}
+                    </h3>
+                  </div>
+                  <div className="bg-slate-50 dark:bg-slate-900/50 rounded-xl overflow-hidden">
+                    {shortcuts.map((shortcut, index) => (
+                      <div
+                        key={shortcut.key}
+                        className={`flex items-center justify-between px-4 py-3 ${
+                          index !== shortcuts.length - 1 ? 'border-b border-slate-200 dark:border-slate-700' : ''
+                        }`}
+                      >
+                        <span className="text-sm text-slate-600 dark:text-slate-400">
+                          {shortcut.description}
+                        </span>
+                        {renderKey(shortcut)}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+
+          {/* Footer tip */}
+          <div className="mt-6 p-4 bg-emerald-50 dark:bg-emerald-900/20 rounded-xl">
+            <div className="flex items-start gap-3">
+              <Lightbulb className="w-5 h-5 text-emerald-600 dark:text-emerald-400 mt-0.5" />
+              <div>
+                <p className="text-sm font-medium text-emerald-800 dark:text-emerald-300">
+                  Astuce
+                </p>
+                <p className="text-sm text-emerald-700 dark:text-emerald-400 mt-1">
+                  Les séquences de touches (comme <kbd className="px-1.5 py-0.5 text-xs bg-white dark:bg-slate-800 rounded">G</kbd> puis <kbd className="px-1.5 py-0.5 text-xs bg-white dark:bg-slate-800 rounded">D</kbd>) doivent être pressées dans un délai d'une seconde.
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+/* ============================================
+   CUSTOMIZABLE THEMES SYSTEM
+   ============================================ */
+interface AppTheme {
+  id: string
+  name: string
+  description: string
+  colors: {
+    primary: string
+    primaryHover: string
+    primaryLight: string
+    accent: string
+    accentHover: string
+  }
+  preview: string[] // Preview colors for theme selector
+}
+
+const APP_THEMES: AppTheme[] = [
+  {
+    id: 'emerald',
+    name: 'Émeraude',
+    description: 'Le thème par défaut de CCOUSA',
+    colors: {
+      primary: '16, 185, 129', // emerald-500
+      primaryHover: '5, 150, 105', // emerald-600
+      primaryLight: '209, 250, 229', // emerald-100
+      accent: '20, 184, 166', // teal-500
+      accentHover: '13, 148, 136', // teal-600
+    },
+    preview: ['#10b981', '#14b8a6', '#d1fae5'],
+  },
+  {
+    id: 'blue',
+    name: 'Bleu Océan',
+    description: 'Un thème frais et professionnel',
+    colors: {
+      primary: '59, 130, 246', // blue-500
+      primaryHover: '37, 99, 235', // blue-600
+      primaryLight: '219, 234, 254', // blue-100
+      accent: '14, 165, 233', // sky-500
+      accentHover: '2, 132, 199', // sky-600
+    },
+    preview: ['#3b82f6', '#0ea5e9', '#dbeafe'],
+  },
+  {
+    id: 'purple',
+    name: 'Violet Royal',
+    description: 'Un thème élégant et moderne',
+    colors: {
+      primary: '139, 92, 246', // violet-500
+      primaryHover: '124, 58, 237', // violet-600
+      primaryLight: '237, 233, 254', // violet-100
+      accent: '168, 85, 247', // purple-500
+      accentHover: '147, 51, 234', // purple-600
+    },
+    preview: ['#8b5cf6', '#a855f7', '#ede9fe'],
+  },
+  {
+    id: 'rose',
+    name: 'Rose Corail',
+    description: 'Un thème chaleureux et accueillant',
+    colors: {
+      primary: '244, 63, 94', // rose-500
+      primaryHover: '225, 29, 72', // rose-600
+      primaryLight: '255, 228, 230', // rose-100
+      accent: '236, 72, 153', // pink-500
+      accentHover: '219, 39, 119', // pink-600
+    },
+    preview: ['#f43f5e', '#ec4899', '#ffe4e6'],
+  },
+  {
+    id: 'amber',
+    name: 'Ambre Doré',
+    description: 'Un thème chaud et lumineux',
+    colors: {
+      primary: '245, 158, 11', // amber-500
+      primaryHover: '217, 119, 6', // amber-600
+      primaryLight: '254, 243, 199', // amber-100
+      accent: '249, 115, 22', // orange-500
+      accentHover: '234, 88, 12', // orange-600
+    },
+    preview: ['#f59e0b', '#f97316', '#fef3c7'],
+  },
+  {
+    id: 'slate',
+    name: 'Gris Moderne',
+    description: 'Un thème minimaliste et neutre',
+    colors: {
+      primary: '100, 116, 139', // slate-500
+      primaryHover: '71, 85, 105', // slate-600
+      primaryLight: '241, 245, 249', // slate-100
+      accent: '107, 114, 128', // gray-500
+      accentHover: '75, 85, 99', // gray-600
+    },
+    preview: ['#64748b', '#6b7280', '#f1f5f9'],
+  },
+]
+
+function useTheme() {
+  const [currentTheme, setCurrentTheme] = useState<AppTheme>(() => {
+    const savedThemeId = localStorage.getItem('app_theme')
+    const theme = APP_THEMES.find(t => t.id === savedThemeId)
+    return theme || APP_THEMES[0]
+  })
+
+  // Apply theme to CSS variables
+  useEffect(() => {
+    const root = document.documentElement
+    root.style.setProperty('--color-primary', currentTheme.colors.primary)
+    root.style.setProperty('--color-primary-hover', currentTheme.colors.primaryHover)
+    root.style.setProperty('--color-primary-light', currentTheme.colors.primaryLight)
+    root.style.setProperty('--color-accent', currentTheme.colors.accent)
+    root.style.setProperty('--color-accent-hover', currentTheme.colors.accentHover)
+    localStorage.setItem('app_theme', currentTheme.id)
+  }, [currentTheme])
+
+  const setTheme = (themeId: string) => {
+    const theme = APP_THEMES.find(t => t.id === themeId)
+    if (theme) {
+      setCurrentTheme(theme)
+    }
+  }
+
+  return {
+    theme: currentTheme,
+    themes: APP_THEMES,
+    setTheme,
+  }
+}
+
+// Theme Selector Modal
+function ThemeSelectorModal({
+  isOpen,
+  onClose,
+  currentTheme,
+  themes,
+  onSelectTheme,
+}: {
+  isOpen: boolean
+  onClose: () => void
+  currentTheme: AppTheme
+  themes: AppTheme[]
+  onSelectTheme: (themeId: string) => void
+}) {
+  if (!isOpen) return null
+
+  return (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+      {/* Backdrop */}
+      <div
+        className="absolute inset-0 bg-black/50 backdrop-blur-sm"
+        onClick={onClose}
+      />
+
+      {/* Modal */}
+      <div className="relative bg-white dark:bg-slate-800 rounded-2xl shadow-2xl max-w-lg w-full overflow-hidden animate-slide-up">
+        {/* Header */}
+        <div className="flex items-center justify-between p-6 border-b border-slate-200 dark:border-slate-700">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-violet-500 to-purple-600 flex items-center justify-center">
+              <Palette className="w-5 h-5 text-white" />
+            </div>
+            <div>
+              <h2 className="text-lg font-bold text-slate-800 dark:text-slate-100">
+                Thèmes de l'application
+              </h2>
+              <p className="text-sm text-slate-500 dark:text-slate-400">
+                Personnalisez les couleurs de l'interface
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={onClose}
+            className="p-2 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition-colors"
+          >
+            <X className="w-5 h-5 text-slate-500" />
+          </button>
+        </div>
+
+        {/* Theme Grid */}
+        <div className="p-6 grid grid-cols-2 gap-4 max-h-[60vh] overflow-y-auto">
+          {themes.map((theme) => (
+            <button
+              key={theme.id}
+              onClick={() => onSelectTheme(theme.id)}
+              className={`relative p-4 rounded-xl border-2 transition-all text-left ${
+                currentTheme.id === theme.id
+                  ? 'border-emerald-500 bg-emerald-50 dark:bg-emerald-900/20'
+                  : 'border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600'
+              }`}
+            >
+              {/* Selected indicator */}
+              {currentTheme.id === theme.id && (
+                <div className="absolute top-2 right-2 w-6 h-6 bg-emerald-500 rounded-full flex items-center justify-center">
+                  <Check className="w-4 h-4 text-white" />
+                </div>
+              )}
+
+              {/* Color preview */}
+              <div className="flex gap-1 mb-3">
+                {theme.preview.map((color, index) => (
+                  <div
+                    key={index}
+                    className="w-8 h-8 rounded-lg shadow-sm"
+                    style={{ backgroundColor: color }}
+                  />
+                ))}
+              </div>
+
+              {/* Theme info */}
+              <h3 className="font-semibold text-slate-800 dark:text-slate-100">
+                {theme.name}
+              </h3>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                {theme.description}
+              </p>
+            </button>
+          ))}
+        </div>
+
+        {/* Footer */}
+        <div className="px-6 py-4 bg-slate-50 dark:bg-slate-900/50 border-t border-slate-200 dark:border-slate-700">
+          <p className="text-xs text-slate-500 dark:text-slate-400 text-center">
+            Les changements sont appliqués instantanément et sauvegardés automatiquement
+          </p>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+/* ============================================
+   ONBOARDING TUTORIAL SYSTEM
+   ============================================ */
+interface OnboardingStep {
+  id: string
+  title: string
+  description: string
+  target: string // CSS selector for the element to highlight
+  position: 'top' | 'bottom' | 'left' | 'right'
+  action?: () => void
+}
+
+const ONBOARDING_STEPS: OnboardingStep[] = [
+  {
+    id: 'welcome',
+    title: 'Bienvenue sur CCOUSA-APP!',
+    description: 'Cette visite guidée vous aidera à découvrir les fonctionnalités principales de l\'application. Cliquez sur "Suivant" pour commencer.',
+    target: 'body',
+    position: 'bottom',
+  },
+  {
+    id: 'sidebar',
+    title: 'Navigation principale',
+    description: 'Utilisez la barre latérale pour naviguer entre les différentes sections de l\'application : Événements, Rapports, Utilisateurs, et plus.',
+    target: '[data-tour="sidebar"]',
+    position: 'right',
+  },
+  {
+    id: 'search',
+    title: 'Recherche globale',
+    description: 'La barre de recherche vous permet de trouver rapidement des événements, utilisateurs ou procédures. Utilisez Ctrl+K pour y accéder instantanément.',
+    target: '[data-tour="search"]',
+    position: 'bottom',
+  },
+  {
+    id: 'dashboard',
+    title: 'Tableau de bord',
+    description: 'Le tableau de bord affiche un aperçu des statistiques clés et des activités récentes. Personnalisez les widgets selon vos besoins.',
+    target: '[data-tour="dashboard"]',
+    position: 'top',
+  },
+  {
+    id: 'notifications',
+    title: 'Notifications',
+    description: 'Restez informé des mises à jour importantes grâce aux notifications en temps réel. Cliquez sur la cloche pour voir toutes vos notifications.',
+    target: '[data-tour="notifications"]',
+    position: 'bottom',
+  },
+  {
+    id: 'profile',
+    title: 'Votre profil',
+    description: 'Accédez à votre profil pour gérer vos paramètres, changer votre mot de passe, ou vous déconnecter.',
+    target: '[data-tour="profile"]',
+    position: 'bottom',
+  },
+  {
+    id: 'darkmode',
+    title: 'Mode sombre',
+    description: 'Basculez entre le mode clair et sombre selon vos préférences. Utilisez Alt+D comme raccourci.',
+    target: '[data-tour="darkmode"]',
+    position: 'bottom',
+  },
+  {
+    id: 'shortcuts',
+    title: 'Raccourcis clavier',
+    description: 'Appuyez sur "?" à tout moment pour afficher la liste complète des raccourcis clavier disponibles.',
+    target: '[data-tour="shortcuts"]',
+    position: 'top',
+  },
+  {
+    id: 'complete',
+    title: 'C\'est parti!',
+    description: 'Vous êtes prêt à utiliser CCOUSA-APP. N\'hésitez pas à explorer les différentes fonctionnalités. Bonne utilisation!',
+    target: 'body',
+    position: 'bottom',
+  },
+]
+
+function useOnboarding() {
+  const [isActive, setIsActive] = useState(false)
+  const [currentStep, setCurrentStep] = useState(0)
+  const [hasCompleted, setHasCompleted] = useState(() => {
+    return localStorage.getItem('onboarding_completed') === 'true'
+  })
+
+  const startTour = () => {
+    setCurrentStep(0)
+    setIsActive(true)
+  }
+
+  const endTour = (completed: boolean = false) => {
+    setIsActive(false)
+    setCurrentStep(0)
+    if (completed) {
+      setHasCompleted(true)
+      localStorage.setItem('onboarding_completed', 'true')
+    }
+  }
+
+  const nextStep = () => {
+    if (currentStep < ONBOARDING_STEPS.length - 1) {
+      setCurrentStep(currentStep + 1)
+    } else {
+      endTour(true)
+    }
+  }
+
+  const prevStep = () => {
+    if (currentStep > 0) {
+      setCurrentStep(currentStep - 1)
+    }
+  }
+
+  const goToStep = (index: number) => {
+    if (index >= 0 && index < ONBOARDING_STEPS.length) {
+      setCurrentStep(index)
+    }
+  }
+
+  const resetTour = () => {
+    setHasCompleted(false)
+    localStorage.removeItem('onboarding_completed')
+  }
+
+  return {
+    isActive,
+    currentStep,
+    totalSteps: ONBOARDING_STEPS.length,
+    step: ONBOARDING_STEPS[currentStep],
+    hasCompleted,
+    startTour,
+    endTour,
+    nextStep,
+    prevStep,
+    goToStep,
+    resetTour,
+  }
+}
+
+// Onboarding Tour Component
+function OnboardingTour({
+  isActive,
+  step,
+  currentStep,
+  totalSteps,
+  onNext,
+  onPrev,
+  onSkip,
+}: {
+  isActive: boolean
+  step: OnboardingStep
+  currentStep: number
+  totalSteps: number
+  onNext: () => void
+  onPrev: () => void
+  onSkip: () => void
+}) {
+  const [position, setPosition] = useState({ top: 0, left: 0 })
+  const [targetRect, setTargetRect] = useState<DOMRect | null>(null)
+
+  useEffect(() => {
+    if (!isActive || !step) return
+
+    const updatePosition = () => {
+      const target = document.querySelector(step.target)
+      if (target && step.target !== 'body') {
+        const rect = target.getBoundingClientRect()
+        setTargetRect(rect)
+
+        // Calculate tooltip position based on target and position preference
+        const tooltipWidth = 400
+        const tooltipHeight = 200
+        const margin = 16
+
+        let top = 0
+        let left = 0
+
+        switch (step.position) {
+          case 'top':
+            top = rect.top - tooltipHeight - margin
+            left = rect.left + (rect.width - tooltipWidth) / 2
+            break
+          case 'bottom':
+            top = rect.bottom + margin
+            left = rect.left + (rect.width - tooltipWidth) / 2
+            break
+          case 'left':
+            top = rect.top + (rect.height - tooltipHeight) / 2
+            left = rect.left - tooltipWidth - margin
+            break
+          case 'right':
+            top = rect.top + (rect.height - tooltipHeight) / 2
+            left = rect.right + margin
+            break
+        }
+
+        // Ensure tooltip stays within viewport
+        const viewportWidth = window.innerWidth
+        const viewportHeight = window.innerHeight
+
+        if (left < margin) left = margin
+        if (left + tooltipWidth > viewportWidth - margin) left = viewportWidth - tooltipWidth - margin
+        if (top < margin) top = margin
+        if (top + tooltipHeight > viewportHeight - margin) top = viewportHeight - tooltipHeight - margin
+
+        setPosition({ top, left })
+      } else {
+        // Center on screen for body target
+        setTargetRect(null)
+        setPosition({
+          top: window.innerHeight / 2 - 100,
+          left: window.innerWidth / 2 - 200,
+        })
+      }
+    }
+
+    updatePosition()
+    window.addEventListener('resize', updatePosition)
+    window.addEventListener('scroll', updatePosition)
+
+    return () => {
+      window.removeEventListener('resize', updatePosition)
+      window.removeEventListener('scroll', updatePosition)
+    }
+  }, [isActive, step])
+
+  // Handle keyboard navigation
+  useEffect(() => {
+    if (!isActive) return
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        onSkip()
+      } else if (e.key === 'ArrowRight' || e.key === 'Enter') {
+        onNext()
+      } else if (e.key === 'ArrowLeft') {
+        onPrev()
+      }
+    }
+
+    document.addEventListener('keydown', handleKeyDown)
+    return () => document.removeEventListener('keydown', handleKeyDown)
+  }, [isActive, onNext, onPrev, onSkip])
+
+  if (!isActive || !step) return null
+
+  return (
+    <div className="fixed inset-0 z-[200]">
+      {/* Overlay with spotlight effect */}
+      <div className="absolute inset-0">
+        <svg className="w-full h-full">
+          <defs>
+            <mask id="spotlight-mask">
+              <rect x="0" y="0" width="100%" height="100%" fill="white" />
+              {targetRect && (
+                <rect
+                  x={targetRect.left - 8}
+                  y={targetRect.top - 8}
+                  width={targetRect.width + 16}
+                  height={targetRect.height + 16}
+                  rx="12"
+                  fill="black"
+                />
+              )}
+            </mask>
+          </defs>
+          <rect
+            x="0"
+            y="0"
+            width="100%"
+            height="100%"
+            fill="rgba(0, 0, 0, 0.6)"
+            mask="url(#spotlight-mask)"
+          />
+        </svg>
+      </div>
+
+      {/* Highlighted element border */}
+      {targetRect && (
+        <div
+          className="absolute border-2 border-emerald-400 rounded-xl pointer-events-none animate-pulse"
+          style={{
+            top: targetRect.top - 8,
+            left: targetRect.left - 8,
+            width: targetRect.width + 16,
+            height: targetRect.height + 16,
+          }}
+        />
+      )}
+
+      {/* Tooltip */}
+      <div
+        className="absolute bg-white dark:bg-slate-800 rounded-2xl shadow-2xl p-6 w-[400px] animate-slide-up"
+        style={{ top: position.top, left: position.left }}
+      >
+        {/* Progress bar */}
+        <div className="flex items-center gap-1 mb-4">
+          {Array.from({ length: totalSteps }).map((_, i) => (
+            <div
+              key={i}
+              className={`h-1.5 flex-1 rounded-full transition-colors ${
+                i <= currentStep ? 'bg-emerald-500' : 'bg-slate-200 dark:bg-slate-700'
+              }`}
+            />
+          ))}
+        </div>
+
+        {/* Step indicator */}
+        <div className="flex items-center justify-between mb-3">
+          <span className="text-xs text-slate-500 dark:text-slate-400 font-medium">
+            Étape {currentStep + 1} sur {totalSteps}
+          </span>
+          <button
+            onClick={onSkip}
+            className="text-xs text-slate-400 hover:text-slate-600 dark:hover:text-slate-300"
+          >
+            Passer le tutoriel
+          </button>
+        </div>
+
+        {/* Content */}
+        <div className="mb-6">
+          <h3 className="text-lg font-bold text-slate-800 dark:text-slate-100 mb-2">
+            {step.title}
+          </h3>
+          <p className="text-sm text-slate-600 dark:text-slate-400 leading-relaxed">
+            {step.description}
+          </p>
+        </div>
+
+        {/* Navigation buttons */}
+        <div className="flex items-center justify-between">
+          <button
+            onClick={onPrev}
+            disabled={currentStep === 0}
+            className="px-4 py-2 text-sm text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+          >
+            <ChevronLeft className="w-4 h-4" />
+            Précédent
+          </button>
+          <button
+            onClick={onNext}
+            className="px-6 py-2 bg-emerald-600 text-white text-sm font-medium rounded-lg hover:bg-emerald-700 transition-colors flex items-center gap-2"
+          >
+            {currentStep === totalSteps - 1 ? (
+              <>
+                Terminer
+                <CheckCircle className="w-4 h-4" />
+              </>
+            ) : (
+              <>
+                Suivant
+                <ChevronRight className="w-4 h-4" />
+              </>
+            )}
+          </button>
+        </div>
+
+        {/* Keyboard hints */}
+        <div className="mt-4 pt-3 border-t border-slate-200 dark:border-slate-700">
+          <p className="text-[10px] text-slate-400 dark:text-slate-500 text-center">
+            Utilisez <kbd className="px-1 py-0.5 bg-slate-100 dark:bg-slate-700 rounded text-[10px]">←</kbd> <kbd className="px-1 py-0.5 bg-slate-100 dark:bg-slate-700 rounded text-[10px]">→</kbd> pour naviguer • <kbd className="px-1 py-0.5 bg-slate-100 dark:bg-slate-700 rounded text-[10px]">Esc</kbd> pour quitter
+          </p>
+        </div>
+      </div>
+    </div>
+  )
 }
 
 /* ============================================
@@ -513,6 +1995,16 @@ function LoginPage({ onLogin }: { onLogin: (user: UserSession) => void }) {
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
+  // Forgot password state
+  const [showForgotPassword, setShowForgotPassword] = useState(false)
+  const [forgotPasswordStep, setForgotPasswordStep] = useState<'email' | 'code' | 'reset' | 'success'>('email')
+  const [forgotEmail, setForgotEmail] = useState('')
+  const [resetCode, setResetCode] = useState('')
+  const [newPassword, setNewPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
+  const [forgotPasswordLoading, setForgotPasswordLoading] = useState(false)
+  const [forgotPasswordError, setForgotPasswordError] = useState<string | null>(null)
+
   const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -568,6 +2060,118 @@ function LoginPage({ onLogin }: { onLogin: (user: UserSession) => void }) {
 
   const changeLanguage = (lng: string) => {
     i18n.changeLanguage(lng)
+  }
+
+  // Request password reset
+  const handleForgotPasswordSubmit = async () => {
+    if (!forgotEmail.trim()) {
+      setForgotPasswordError('Veuillez entrer votre adresse email')
+      return
+    }
+
+    setForgotPasswordLoading(true)
+    setForgotPasswordError(null)
+
+    try {
+      const response = await fetch(`${API_URL}/api/auth/forgot-password`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: forgotEmail })
+      })
+
+      const data = await response.json()
+
+      if (response.ok) {
+        setForgotPasswordStep('code')
+      } else {
+        // Even if email not found, show success for security
+        setForgotPasswordStep('code')
+      }
+    } catch (error) {
+      // Show success anyway to prevent email enumeration
+      setForgotPasswordStep('code')
+    } finally {
+      setForgotPasswordLoading(false)
+    }
+  }
+
+  // Verify reset code
+  const handleVerifyCode = async () => {
+    if (!resetCode.trim() || resetCode.length < 6) {
+      setForgotPasswordError('Veuillez entrer le code a 6 chiffres')
+      return
+    }
+
+    setForgotPasswordLoading(true)
+    setForgotPasswordError(null)
+
+    try {
+      const response = await fetch(`${API_URL}/api/auth/verify-reset-code`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: forgotEmail, code: resetCode })
+      })
+
+      if (response.ok) {
+        setForgotPasswordStep('reset')
+      } else {
+        setForgotPasswordError('Code invalide ou expire')
+      }
+    } catch (error) {
+      setForgotPasswordError('Erreur de verification du code')
+    } finally {
+      setForgotPasswordLoading(false)
+    }
+  }
+
+  // Reset password
+  const handleResetPassword = async () => {
+    if (!newPassword || newPassword.length < 8) {
+      setForgotPasswordError('Le mot de passe doit contenir au moins 8 caracteres')
+      return
+    }
+
+    if (newPassword !== confirmPassword) {
+      setForgotPasswordError('Les mots de passe ne correspondent pas')
+      return
+    }
+
+    setForgotPasswordLoading(true)
+    setForgotPasswordError(null)
+
+    try {
+      const response = await fetch(`${API_URL}/api/auth/reset-password`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: forgotEmail,
+          code: resetCode,
+          newPassword
+        })
+      })
+
+      if (response.ok) {
+        setForgotPasswordStep('success')
+      } else {
+        const data = await response.json()
+        setForgotPasswordError(data.message || 'Erreur lors de la reinitialisation')
+      }
+    } catch (error) {
+      setForgotPasswordError('Erreur de connexion au serveur')
+    } finally {
+      setForgotPasswordLoading(false)
+    }
+  }
+
+  // Close and reset forgot password modal
+  const closeForgotPassword = () => {
+    setShowForgotPassword(false)
+    setForgotPasswordStep('email')
+    setForgotEmail('')
+    setResetCode('')
+    setNewPassword('')
+    setConfirmPassword('')
+    setForgotPasswordError(null)
   }
 
   return (
@@ -722,7 +2326,13 @@ function LoginPage({ onLogin }: { onLogin: (user: UserSession) => void }) {
                   <input type="checkbox" className="w-4 h-4 rounded border-white/20 bg-white/5 text-emerald-500 focus:ring-emerald-400/30" />
                   <span className="text-white/50 group-hover:text-white/70 transition-colors">{t('login.rememberMe')}</span>
                 </label>
-                <a href="#" className="font-medium text-emerald-400 hover:text-emerald-300 transition-colors">{t('login.forgotPassword')}</a>
+                <button
+                  type="button"
+                  onClick={() => setShowForgotPassword(true)}
+                  className="font-medium text-emerald-400 hover:text-emerald-300 transition-colors"
+                >
+                  {t('login.forgotPassword')}
+                </button>
               </div>
 
               <button
@@ -763,6 +2373,246 @@ function LoginPage({ onLogin }: { onLogin: (user: UserSession) => void }) {
           </div>
         </div>
       </div>
+
+      {/* Forgot Password Modal */}
+      {showForgotPassword && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-3xl w-full max-w-md overflow-hidden shadow-2xl animate-slide-up">
+            {/* Header */}
+            <div className="bg-gradient-to-r from-emerald-500 to-teal-500 px-6 py-5">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 bg-white/20 rounded-xl flex items-center justify-center">
+                    {forgotPasswordStep === 'success' ? (
+                      <CheckCircle className="w-5 h-5 text-white" />
+                    ) : (
+                      <Key className="w-5 h-5 text-white" />
+                    )}
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-bold text-white">
+                      {forgotPasswordStep === 'email' && 'Mot de passe oublie'}
+                      {forgotPasswordStep === 'code' && 'Verification'}
+                      {forgotPasswordStep === 'reset' && 'Nouveau mot de passe'}
+                      {forgotPasswordStep === 'success' && 'Succes!'}
+                    </h3>
+                    <p className="text-sm text-white/70">
+                      {forgotPasswordStep === 'email' && 'Etape 1/3'}
+                      {forgotPasswordStep === 'code' && 'Etape 2/3'}
+                      {forgotPasswordStep === 'reset' && 'Etape 3/3'}
+                      {forgotPasswordStep === 'success' && 'Termine'}
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={closeForgotPassword}
+                  className="p-2 text-white/70 hover:text-white hover:bg-white/10 rounded-lg transition-colors"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              {/* Progress bar */}
+              <div className="flex gap-2 mt-4">
+                {['email', 'code', 'reset'].map((step, index) => (
+                  <div
+                    key={step}
+                    className={`h-1 flex-1 rounded-full transition-colors ${
+                      ['email', 'code', 'reset', 'success'].indexOf(forgotPasswordStep) >= index
+                        ? 'bg-white'
+                        : 'bg-white/30'
+                    }`}
+                  />
+                ))}
+              </div>
+            </div>
+
+            {/* Content */}
+            <div className="p-6">
+              {forgotPasswordError && (
+                <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-xl flex items-center gap-2 text-red-600">
+                  <AlertTriangle className="w-4 h-4 flex-shrink-0" />
+                  <p className="text-sm">{forgotPasswordError}</p>
+                </div>
+              )}
+
+              {/* Step 1: Email */}
+              {forgotPasswordStep === 'email' && (
+                <div className="space-y-4">
+                  <p className="text-slate-600 text-sm">
+                    Entrez votre adresse email. Nous vous enverrons un code de verification.
+                  </p>
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-2">
+                      Adresse email
+                    </label>
+                    <div className="relative">
+                      <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
+                      <input
+                        type="email"
+                        value={forgotEmail}
+                        onChange={(e) => setForgotEmail(e.target.value)}
+                        placeholder="votre@email.com"
+                        className="w-full pl-12 pr-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none"
+                      />
+                    </div>
+                  </div>
+                  <button
+                    onClick={handleForgotPasswordSubmit}
+                    disabled={forgotPasswordLoading || !forgotEmail.trim()}
+                    className="w-full py-3 bg-gradient-to-r from-emerald-500 to-teal-500 text-white font-semibold rounded-xl hover:from-emerald-600 hover:to-teal-600 transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+                  >
+                    {forgotPasswordLoading ? (
+                      <RefreshCw className="w-5 h-5 animate-spin" />
+                    ) : (
+                      <>
+                        Envoyer le code
+                        <ArrowRight className="w-4 h-4" />
+                      </>
+                    )}
+                  </button>
+                </div>
+              )}
+
+              {/* Step 2: Code verification */}
+              {forgotPasswordStep === 'code' && (
+                <div className="space-y-4">
+                  <p className="text-slate-600 text-sm">
+                    Un code de verification a ete envoye a <strong>{forgotEmail}</strong>.
+                    Verifiez votre boite mail (et vos spams).
+                  </p>
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-2">
+                      Code de verification (6 chiffres)
+                    </label>
+                    <input
+                      type="text"
+                      value={resetCode}
+                      onChange={(e) => setResetCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                      placeholder="000000"
+                      maxLength={6}
+                      className="w-full px-4 py-3 text-center text-2xl font-mono tracking-[0.5em] border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none"
+                    />
+                  </div>
+                  <div className="flex gap-3">
+                    <button
+                      onClick={() => setForgotPasswordStep('email')}
+                      className="flex-1 py-3 text-slate-600 hover:bg-slate-100 rounded-xl transition-colors"
+                    >
+                      Retour
+                    </button>
+                    <button
+                      onClick={handleVerifyCode}
+                      disabled={forgotPasswordLoading || resetCode.length < 6}
+                      className="flex-1 py-3 bg-gradient-to-r from-emerald-500 to-teal-500 text-white font-semibold rounded-xl hover:from-emerald-600 hover:to-teal-600 transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+                    >
+                      {forgotPasswordLoading ? (
+                        <RefreshCw className="w-5 h-5 animate-spin" />
+                      ) : (
+                        <>
+                          Verifier
+                          <ArrowRight className="w-4 h-4" />
+                        </>
+                      )}
+                    </button>
+                  </div>
+                  <button
+                    onClick={handleForgotPasswordSubmit}
+                    disabled={forgotPasswordLoading}
+                    className="w-full text-sm text-emerald-600 hover:text-emerald-700"
+                  >
+                    Renvoyer le code
+                  </button>
+                </div>
+              )}
+
+              {/* Step 3: New password */}
+              {forgotPasswordStep === 'reset' && (
+                <div className="space-y-4">
+                  <p className="text-slate-600 text-sm">
+                    Choisissez un nouveau mot de passe securise (min. 8 caracteres).
+                  </p>
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-2">
+                      Nouveau mot de passe
+                    </label>
+                    <div className="relative">
+                      <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
+                      <input
+                        type={showPassword ? 'text' : 'password'}
+                        value={newPassword}
+                        onChange={(e) => setNewPassword(e.target.value)}
+                        placeholder="Minimum 8 caracteres"
+                        className="w-full pl-12 pr-12 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowPassword(!showPassword)}
+                        className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                      >
+                        {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                      </button>
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-2">
+                      Confirmer le mot de passe
+                    </label>
+                    <div className="relative">
+                      <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
+                      <input
+                        type={showPassword ? 'text' : 'password'}
+                        value={confirmPassword}
+                        onChange={(e) => setConfirmPassword(e.target.value)}
+                        placeholder="Retapez le mot de passe"
+                        className="w-full pl-12 pr-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none"
+                      />
+                    </div>
+                    {confirmPassword && newPassword !== confirmPassword && (
+                      <p className="text-xs text-red-500 mt-1">Les mots de passe ne correspondent pas</p>
+                    )}
+                  </div>
+                  <button
+                    onClick={handleResetPassword}
+                    disabled={forgotPasswordLoading || newPassword.length < 8 || newPassword !== confirmPassword}
+                    className="w-full py-3 bg-gradient-to-r from-emerald-500 to-teal-500 text-white font-semibold rounded-xl hover:from-emerald-600 hover:to-teal-600 transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+                  >
+                    {forgotPasswordLoading ? (
+                      <RefreshCw className="w-5 h-5 animate-spin" />
+                    ) : (
+                      <>
+                        Reinitialiser le mot de passe
+                        <CheckCircle className="w-4 h-4" />
+                      </>
+                    )}
+                  </button>
+                </div>
+              )}
+
+              {/* Step 4: Success */}
+              {forgotPasswordStep === 'success' && (
+                <div className="text-center space-y-4">
+                  <div className="w-20 h-20 bg-emerald-100 rounded-full flex items-center justify-center mx-auto">
+                    <CheckCircle className="w-10 h-10 text-emerald-500" />
+                  </div>
+                  <div>
+                    <h4 className="text-lg font-semibold text-slate-800">Mot de passe reinitialise!</h4>
+                    <p className="text-slate-600 text-sm mt-1">
+                      Vous pouvez maintenant vous connecter avec votre nouveau mot de passe.
+                    </p>
+                  </div>
+                  <button
+                    onClick={closeForgotPassword}
+                    className="w-full py-3 bg-gradient-to-r from-emerald-500 to-teal-500 text-white font-semibold rounded-xl hover:from-emerald-600 hover:to-teal-600 transition-all"
+                  >
+                    Retour a la connexion
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Copyright en bas de page */}
       <div className="absolute bottom-6 left-0 right-0 text-center">
@@ -808,6 +2658,8 @@ function Sidebar({ activeItem, onItemClick, isCollapsed, onToggleCollapse, isMob
         { id: 'events-processed', label: t('sidebar.eventsProcessed') },
         { id: 'events-scheduled', label: t('sidebar.eventsScheduled') },
         { id: 'events-map', label: t('sidebar.eventsMap', 'Carte') },
+        { id: 'events-calendar', label: 'Calendrier' },
+        { id: 'events-kanban', label: 'Kanban' },
       ]
     },
     { id: 'reports', label: t('sidebar.reports'), icon: <BarChart3 className="w-5 h-5" /> },
@@ -1073,6 +2925,190 @@ const statusColors: Record<UserStatus, { bg: string; dot: string; ring: string }
 }
 
 /* ============================================
+   REMINDER MODAL COMPONENT
+   ============================================ */
+function ReminderModal({ isOpen, onClose, eventId, eventTitle, eventCode, eventDeadline, existingReminders, onAddReminder, onRemoveReminder }: {
+  isOpen: boolean
+  onClose: () => void
+  eventId: string
+  eventTitle: string
+  eventCode: string
+  eventDeadline?: Date | null
+  existingReminders: Reminder[]
+  onAddReminder: (eventId: string, eventTitle: string, eventCode: string, deadline: Date, minutesBefore: number) => void
+  onRemoveReminder: (reminderId: string) => void
+}) {
+  const [selectedMinutes, setSelectedMinutes] = useState(60)
+  const [customDate, setCustomDate] = useState('')
+  const [customTime, setCustomTime] = useState('')
+  const [useCustom, setUseCustom] = useState(false)
+
+  if (!isOpen) return null
+
+  const handleAddReminder = () => {
+    let deadline: Date
+
+    if (useCustom && customDate && customTime) {
+      deadline = new Date(`${customDate}T${customTime}`)
+    } else if (eventDeadline) {
+      deadline = new Date(eventDeadline)
+    } else {
+      // Default to 24 hours from now if no deadline
+      deadline = new Date(Date.now() + 24 * 60 * 60 * 1000)
+    }
+
+    onAddReminder(eventId, eventTitle, eventCode, deadline, useCustom ? 0 : selectedMinutes)
+    onClose()
+  }
+
+  const formatReminderTime = (date: Date) => {
+    return new Date(date).toLocaleString('fr-FR', {
+      dateStyle: 'medium',
+      timeStyle: 'short'
+    })
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+      <div className="bg-white rounded-2xl w-full max-w-md mx-4 overflow-hidden animate-slide-up">
+        {/* Header */}
+        <div className="flex items-center justify-between p-5 border-b border-slate-200">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 bg-amber-100 rounded-xl flex items-center justify-center">
+              <Bell className="w-5 h-5 text-amber-600" />
+            </div>
+            <div>
+              <h3 className="font-semibold text-slate-800">Configurer un rappel</h3>
+              <p className="text-xs text-slate-500">{eventCode}</p>
+            </div>
+          </div>
+          <button
+            onClick={onClose}
+            className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        {/* Content */}
+        <div className="p-5 space-y-5">
+          {/* Event info */}
+          <div className="bg-slate-50 rounded-xl p-4">
+            <p className="text-sm text-slate-500 mb-1">Événement</p>
+            <p className="font-medium text-slate-800">{eventTitle}</p>
+            {eventDeadline && (
+              <p className="text-sm text-slate-500 mt-2">
+                Échéance: {formatReminderTime(eventDeadline)}
+              </p>
+            )}
+          </div>
+
+          {/* Existing reminders */}
+          {existingReminders.length > 0 && (
+            <div>
+              <p className="text-sm font-medium text-slate-700 mb-2">Rappels existants</p>
+              <div className="space-y-2">
+                {existingReminders.map(reminder => (
+                  <div key={reminder.id} className="flex items-center justify-between p-3 bg-amber-50 rounded-lg">
+                    <div className="flex items-center gap-2">
+                      <Clock className="w-4 h-4 text-amber-600" />
+                      <span className="text-sm text-amber-800">
+                        {formatReminderTime(reminder.reminderTime)}
+                      </span>
+                    </div>
+                    <button
+                      onClick={() => onRemoveReminder(reminder.id)}
+                      className="p-1 text-amber-600 hover:bg-amber-100 rounded transition-colors"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Add new reminder */}
+          <div>
+            <p className="text-sm font-medium text-slate-700 mb-3">Ajouter un rappel</p>
+
+            {/* Toggle */}
+            <div className="flex gap-2 mb-4">
+              <button
+                onClick={() => setUseCustom(false)}
+                className={`flex-1 py-2 px-3 rounded-lg text-sm font-medium transition-colors ${
+                  !useCustom ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-600'
+                }`}
+              >
+                Avant échéance
+              </button>
+              <button
+                onClick={() => setUseCustom(true)}
+                className={`flex-1 py-2 px-3 rounded-lg text-sm font-medium transition-colors ${
+                  useCustom ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-600'
+                }`}
+              >
+                Date personnalisée
+              </button>
+            </div>
+
+            {!useCustom ? (
+              <select
+                value={selectedMinutes}
+                onChange={(e) => setSelectedMinutes(Number(e.target.value))}
+                className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none"
+              >
+                {REMINDER_OPTIONS.map(option => (
+                  <option key={option.value} value={option.value}>{option.label}</option>
+                ))}
+              </select>
+            ) : (
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs text-slate-500 mb-1">Date</label>
+                  <input
+                    type="date"
+                    value={customDate}
+                    onChange={(e) => setCustomDate(e.target.value)}
+                    className="w-full px-3 py-2.5 border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs text-slate-500 mb-1">Heure</label>
+                  <input
+                    type="time"
+                    value={customTime}
+                    onChange={(e) => setCustomTime(e.target.value)}
+                    className="w-full px-3 py-2.5 border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none"
+                  />
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div className="flex items-center justify-end gap-3 p-5 border-t border-slate-200 bg-slate-50">
+          <button
+            onClick={onClose}
+            className="px-4 py-2.5 text-slate-600 hover:bg-slate-200 rounded-xl transition-colors"
+          >
+            Annuler
+          </button>
+          <button
+            onClick={handleAddReminder}
+            className="flex items-center gap-2 px-5 py-2.5 bg-emerald-500 text-white rounded-xl hover:bg-emerald-600 transition-colors"
+          >
+            <Bell className="w-4 h-4" />
+            Ajouter le rappel
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+/* ============================================
    TOAST NOTIFICATION COMPONENT
    ============================================ */
 function NotificationToast({ notification, onDismiss }: {
@@ -1330,6 +3366,27 @@ function Header({ onMenuToggle, currentPage, onLogout, onProfileClick, onNotific
     return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [])
 
+  // Keyboard shortcut for search (Ctrl+K or Cmd+K)
+  useEffect(() => {
+    function handleKeyDown(event: KeyboardEvent) {
+      if ((event.ctrlKey || event.metaKey) && event.key === 'k') {
+        event.preventDefault()
+        const searchInput = document.querySelector('input[placeholder*="Rechercher"]') as HTMLInputElement
+        if (searchInput) {
+          searchInput.focus()
+          setSearchOpen(true)
+        }
+      }
+      // Escape to close search
+      if (event.key === 'Escape' && searchOpen) {
+        setSearchOpen(false)
+        setSearchQuery('')
+      }
+    }
+    document.addEventListener('keydown', handleKeyDown)
+    return () => document.removeEventListener('keydown', handleKeyDown)
+  }, [searchOpen])
+
   // Get total search results count
   const totalResults = searchResults.events.length + searchResults.users.length + searchResults.procedures.length + searchResults.articles.length
 
@@ -1401,7 +3458,7 @@ function Header({ onMenuToggle, currentPage, onLogout, onProfileClick, onNotific
         </div>
 
         {/* Global Search */}
-        <div className="relative flex-1 max-w-md mx-4 hidden md:block" ref={searchRef}>
+        <div className="relative flex-1 max-w-md mx-4 hidden md:block" ref={searchRef} data-tour="search">
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
             <input
@@ -1412,8 +3469,12 @@ function Header({ onMenuToggle, currentPage, onLogout, onProfileClick, onNotific
               placeholder="Rechercher événements, utilisateurs, procédures..."
               className="w-full pl-10 pr-4 py-2.5 bg-slate-100 border border-transparent rounded-xl text-sm text-slate-700 placeholder-slate-400 focus:bg-white focus:border-emerald-300 focus:ring-2 focus:ring-emerald-500/20 outline-none transition-all"
             />
-            {searchLoading && (
+            {searchLoading ? (
               <RefreshCw className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 animate-spin" />
+            ) : !searchQuery && (
+              <kbd className="absolute right-3 top-1/2 -translate-y-1/2 px-1.5 py-0.5 text-[10px] font-mono text-slate-400 bg-slate-200 rounded">
+                Ctrl+K
+              </kbd>
             )}
           </div>
 
@@ -1593,6 +3654,7 @@ function Header({ onMenuToggle, currentPage, onLogout, onProfileClick, onNotific
             onClick={toggleDarkMode}
             className="p-3 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-xl transition-colors"
             title={darkMode ? 'Mode clair' : 'Mode sombre'}
+            data-tour="darkmode"
           >
             {darkMode ? (
               <Sun className="w-6 h-6 text-amber-500" />
@@ -1602,7 +3664,7 @@ function Header({ onMenuToggle, currentPage, onLogout, onProfileClick, onNotific
           </button>
 
           {/* Notifications */}
-          <div className="relative" ref={notifRef}>
+          <div className="relative" ref={notifRef} data-tour="notifications">
             <button
               onClick={() => setNotificationsOpen(!notificationsOpen)}
               className="relative p-3 hover:bg-slate-100 rounded-xl transition-colors"
@@ -1712,7 +3774,7 @@ function Header({ onMenuToggle, currentPage, onLogout, onProfileClick, onNotific
           <div className="hidden sm:block w-px h-10 bg-slate-200 mx-2" />
 
           {/* Menu Utilisateur */}
-          <div className="relative" ref={menuRef}>
+          <div className="relative" ref={menuRef} data-tour="profile">
             <button
               onClick={() => setUserMenuOpen(!userMenuOpen)}
               className="flex items-center gap-3 p-2 pr-4 hover:bg-slate-100 rounded-xl transition-all cursor-pointer group"
@@ -1979,6 +4041,12 @@ function Dashboard({ userSession, onNavigate }: { userSession: UserSession | nul
     saveWidgetConfig(newConfig)
   }
 
+  // Save widget order to localStorage
+  const saveWidgetOrder = (order: string[]) => {
+    setWidgetOrder(order)
+    localStorage.setItem('dashboard_widget_order', JSON.stringify(order))
+  }
+
   // Reset to defaults
   const resetWidgets = () => {
     const defaultConfig = {
@@ -1992,6 +4060,7 @@ function Dashboard({ userSession, onNavigate }: { userSession: UserSession | nul
       bottomStats: true,
     }
     saveWidgetConfig(defaultConfig)
+    saveWidgetOrder(['hero', 'urgentAlerts', 'statsCards', 'trendChart', 'mainContent', 'quickActions', 'bottomStats'])
   }
 
   // Widget definitions
@@ -2276,74 +4345,142 @@ function Dashboard({ userSession, onNavigate }: { userSession: UserSession | nul
         </div>
       </div>
 
-      {/* Widget Settings Modal */}
-      {showWidgetSettings && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-2xl w-full max-w-lg mx-4 max-h-[90vh] overflow-hidden">
-            <div className="flex items-center justify-between p-6 border-b border-slate-200">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 bg-primary-100 rounded-xl flex items-center justify-center">
-                  <Settings className="w-5 h-5 text-primary-600" />
-                </div>
-                <div>
-                  <h3 className="text-lg font-semibold text-slate-800">Personnaliser le tableau de bord</h3>
-                  <p className="text-sm text-slate-500">Choisissez les widgets à afficher</p>
-                </div>
-              </div>
-              <button
-                onClick={() => setShowWidgetSettings(false)}
-                className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
+      {/* Widget Settings Modal with Drag & Drop */}
+      {showWidgetSettings && (() => {
+        // Sort widget definitions based on current order
+        const orderedWidgets = [...widgetDefinitions].sort((a, b) => {
+          const indexA = widgetOrder.indexOf(a.id)
+          const indexB = widgetOrder.indexOf(b.id)
+          if (indexA === -1) return 1
+          if (indexB === -1) return -1
+          return indexA - indexB
+        })
 
-            <div className="p-6 space-y-3 max-h-[50vh] overflow-y-auto">
-              {widgetDefinitions.map(widget => (
-                <label
-                  key={widget.id}
-                  className={`flex items-center gap-4 p-4 rounded-xl cursor-pointer transition-colors ${
-                    widgetConfig[widget.id] ? 'bg-primary-50 border-2 border-primary-200' : 'bg-slate-50 border-2 border-transparent'
-                  }`}
+        const handleWidgetReorder = (newOrder: typeof widgetDefinitions) => {
+          const newOrderIds = newOrder.map(w => w.id)
+          saveWidgetOrder(newOrderIds)
+        }
+
+        return (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+            <div className="bg-white rounded-2xl w-full max-w-lg mx-4 max-h-[90vh] overflow-hidden">
+              <div className="flex items-center justify-between p-6 border-b border-slate-200">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 bg-primary-100 rounded-xl flex items-center justify-center">
+                    <Settings className="w-5 h-5 text-primary-600" />
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-semibold text-slate-800">Personnaliser le tableau de bord</h3>
+                    <p className="text-sm text-slate-500">Glissez-déposez pour réorganiser</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setShowWidgetSettings(false)}
+                  className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
                 >
-                  <input
-                    type="checkbox"
-                    checked={widgetConfig[widget.id] ?? true}
-                    onChange={() => toggleWidget(widget.id)}
-                    className="w-5 h-5 rounded border-slate-300 text-primary-600 focus:ring-primary-500"
-                  />
-                  <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${
-                    widgetConfig[widget.id] ? 'bg-primary-100 text-primary-600' : 'bg-slate-200 text-slate-500'
-                  }`}>
-                    {widget.icon}
-                  </div>
-                  <div className="flex-1">
-                    <p className={`font-medium ${widgetConfig[widget.id] ? 'text-primary-800' : 'text-slate-700'}`}>
-                      {widget.name}
-                    </p>
-                    <p className="text-xs text-slate-500">{widget.description}</p>
-                  </div>
-                </label>
-              ))}
-            </div>
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
 
-            <div className="flex items-center justify-between p-6 border-t border-slate-200 bg-slate-50">
-              <button
-                onClick={resetWidgets}
-                className="px-4 py-2 text-sm text-slate-600 hover:bg-slate-200 rounded-lg transition-colors"
-              >
-                Réinitialiser
-              </button>
-              <button
-                onClick={() => setShowWidgetSettings(false)}
-                className="px-6 py-2 bg-primary-600 text-white rounded-xl hover:bg-primary-700 transition-colors"
-              >
-                Terminé
-              </button>
+              <div className="p-6 space-y-2 max-h-[50vh] overflow-y-auto">
+                {orderedWidgets.map((widget, index) => {
+                  const isEnabled = widgetConfig[widget.id] ?? true
+                  return (
+                    <div
+                      key={widget.id}
+                      draggable
+                      onDragStart={(e) => {
+                        e.dataTransfer.effectAllowed = 'move'
+                        e.dataTransfer.setData('text/plain', widget.id)
+                        ;(e.target as HTMLElement).classList.add('opacity-50', 'scale-[1.02]')
+                      }}
+                      onDragEnd={(e) => {
+                        ;(e.target as HTMLElement).classList.remove('opacity-50', 'scale-[1.02]')
+                      }}
+                      onDragOver={(e) => {
+                        e.preventDefault()
+                        e.dataTransfer.dropEffect = 'move'
+                        ;(e.currentTarget as HTMLElement).classList.add('border-primary-400', 'bg-primary-50/50')
+                      }}
+                      onDragLeave={(e) => {
+                        ;(e.currentTarget as HTMLElement).classList.remove('border-primary-400', 'bg-primary-50/50')
+                      }}
+                      onDrop={(e) => {
+                        e.preventDefault()
+                        ;(e.currentTarget as HTMLElement).classList.remove('border-primary-400', 'bg-primary-50/50')
+                        const draggedId = e.dataTransfer.getData('text/plain')
+                        if (draggedId && draggedId !== widget.id) {
+                          const draggedIndex = orderedWidgets.findIndex(w => w.id === draggedId)
+                          const targetIndex = index
+                          if (draggedIndex !== -1 && targetIndex !== -1) {
+                            const newOrder = [...orderedWidgets]
+                            const [draggedItem] = newOrder.splice(draggedIndex, 1)
+                            newOrder.splice(targetIndex, 0, draggedItem)
+                            handleWidgetReorder(newOrder)
+                          }
+                        }
+                      }}
+                      className={`flex items-center gap-3 p-4 rounded-xl cursor-grab active:cursor-grabbing transition-all border-2 ${
+                        isEnabled ? 'bg-primary-50 border-primary-200' : 'bg-slate-50 border-transparent'
+                      }`}
+                    >
+                      {/* Drag Handle */}
+                      <div className="text-slate-400 hover:text-slate-600 cursor-grab active:cursor-grabbing">
+                        <GripVertical className="w-5 h-5" />
+                      </div>
+
+                      {/* Checkbox */}
+                      <input
+                        type="checkbox"
+                        checked={isEnabled}
+                        onChange={() => toggleWidget(widget.id)}
+                        onClick={(e) => e.stopPropagation()}
+                        className="w-5 h-5 rounded border-slate-300 text-primary-600 focus:ring-primary-500"
+                      />
+
+                      {/* Icon */}
+                      <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${
+                        isEnabled ? 'bg-primary-100 text-primary-600' : 'bg-slate-200 text-slate-500'
+                      }`}>
+                        {widget.icon}
+                      </div>
+
+                      {/* Content */}
+                      <div className="flex-1 min-w-0">
+                        <p className={`font-medium ${isEnabled ? 'text-primary-800' : 'text-slate-700'}`}>
+                          {widget.name}
+                        </p>
+                        <p className="text-xs text-slate-500 truncate">{widget.description}</p>
+                      </div>
+
+                      {/* Position indicator */}
+                      <span className="w-6 h-6 rounded-full bg-slate-100 text-slate-500 text-xs font-bold flex items-center justify-center">
+                        {index + 1}
+                      </span>
+                    </div>
+                  )
+                })}
+              </div>
+
+              <div className="flex items-center justify-between p-6 border-t border-slate-200 bg-slate-50">
+                <button
+                  onClick={resetWidgets}
+                  className="flex items-center gap-2 px-4 py-2 text-sm text-slate-600 hover:bg-slate-200 rounded-lg transition-colors"
+                >
+                  <RotateCcw className="w-4 h-4" />
+                  Réinitialiser
+                </button>
+                <button
+                  onClick={() => setShowWidgetSettings(false)}
+                  className="px-6 py-2 bg-primary-600 text-white rounded-xl hover:bg-primary-700 transition-colors"
+                >
+                  Terminé
+                </button>
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        )
+      })()}
 
       {/* Urgent Events Alert */}
       {widgetConfig.urgentAlerts && urgentEvents.length > 0 && (
@@ -11474,6 +13611,32 @@ function ReportsPage() {
     }
   }
 
+  // Export to DOCX (Word) format
+  const handleExportToDocx = async () => {
+    if (!selectedReport || !reportResult) return
+
+    try {
+      // Define columns based on report type
+      const columns = selectedReport.columns?.length > 0
+        ? selectedReport.columns.map(c => ({ key: c.key, label: c.label }))
+        : Object.keys(reportResult.data[0] || {}).map(key => ({
+            key,
+            label: key.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase())
+          }))
+
+      await exportToDocx({
+        title: selectedReport.name,
+        subtitle: selectedReport.description,
+        date: new Date(reportResult.generatedAt).toLocaleString('fr-FR'),
+        data: reportResult.data,
+        columns,
+        summary: reportResult.summary,
+      })
+    } catch (error) {
+      console.error('Error exporting to DOCX:', error)
+    }
+  }
+
   const handleScheduleReport = (report: ReportData) => {
     setSelectedReport(report)
     if (report.schedule) {
@@ -11843,6 +14006,13 @@ function ReportsPage() {
                   >
                     <Download className="w-4 h-4" />
                     CSV
+                  </button>
+                  <button
+                    onClick={() => handleExportToDocx()}
+                    className="px-3 py-2 text-sm text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors flex items-center gap-1"
+                  >
+                    <FileDown className="w-4 h-4" />
+                    Word
                   </button>
                 </div>
               )}
@@ -12736,6 +14906,743 @@ function EventsMapPage() {
               </div>
             )
           })}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+/* ============================================
+   EVENTS CALENDAR PAGE
+   ============================================ */
+interface CalendarEvent {
+  id: string
+  code: string
+  title: string
+  status: string
+  severity: string
+  date: string
+  category?: { name: string; color: string }
+}
+
+function EventsCalendarPage() {
+  const { t } = useTranslation()
+  const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
+
+  // State
+  const [currentDate, setCurrentDate] = useState(new Date())
+  const [events, setEvents] = useState<CalendarEvent[]>([])
+  const [loading, setLoading] = useState(true)
+  const [selectedDay, setSelectedDay] = useState<Date | null>(null)
+  const [viewMode, setViewMode] = useState<'month' | 'week'>('month')
+
+  const getHeaders = () => {
+    const authData = localStorage.getItem('auth_token')
+    const token = authData ? JSON.parse(authData).token : null
+    return { 'Content-Type': 'application/json', ...(token && { 'Authorization': `Bearer ${token}` }) }
+  }
+
+  // Load events for the current month
+  useEffect(() => {
+    loadEvents()
+  }, [currentDate])
+
+  const loadEvents = async () => {
+    setLoading(true)
+    try {
+      const startOfMonth = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1)
+      const endOfMonth = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 0)
+
+      const params = new URLSearchParams({
+        startDate: startOfMonth.toISOString(),
+        endDate: endOfMonth.toISOString(),
+        pageSize: '500'
+      })
+
+      const response = await fetch(`${API_URL}/api/events?${params}`, { headers: getHeaders() })
+
+      if (response.ok) {
+        const data = await response.json()
+        setEvents((data.data?.items || data.data?.events || []).map((e: any) => ({
+          id: e.id,
+          code: e.code,
+          title: e.title,
+          status: e.status,
+          severity: e.severity,
+          date: e.reportedAt || e.createdAt,
+          category: e.category
+        })))
+      }
+    } catch (error) {
+      console.error('Error loading events:', error)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  // Calendar helpers
+  const getDaysInMonth = (date: Date) => {
+    const year = date.getFullYear()
+    const month = date.getMonth()
+    const firstDay = new Date(year, month, 1)
+    const lastDay = new Date(year, month + 1, 0)
+    const daysInMonth = lastDay.getDate()
+    const startingDay = firstDay.getDay() === 0 ? 6 : firstDay.getDay() - 1 // Monday = 0
+
+    const days: (Date | null)[] = []
+
+    // Add empty cells for days before the first day of the month
+    for (let i = 0; i < startingDay; i++) {
+      days.push(null)
+    }
+
+    // Add days of the month
+    for (let i = 1; i <= daysInMonth; i++) {
+      days.push(new Date(year, month, i))
+    }
+
+    return days
+  }
+
+  const getEventsForDay = (date: Date | null) => {
+    if (!date) return []
+    return events.filter(event => {
+      const eventDate = new Date(event.date)
+      return eventDate.getDate() === date.getDate() &&
+             eventDate.getMonth() === date.getMonth() &&
+             eventDate.getFullYear() === date.getFullYear()
+    })
+  }
+
+  const navigateMonth = (direction: number) => {
+    setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() + direction, 1))
+    setSelectedDay(null)
+  }
+
+  const goToToday = () => {
+    setCurrentDate(new Date())
+    setSelectedDay(new Date())
+  }
+
+  const isToday = (date: Date | null) => {
+    if (!date) return false
+    const today = new Date()
+    return date.getDate() === today.getDate() &&
+           date.getMonth() === today.getMonth() &&
+           date.getFullYear() === today.getFullYear()
+  }
+
+  const isSelected = (date: Date | null) => {
+    if (!date || !selectedDay) return false
+    return date.getDate() === selectedDay.getDate() &&
+           date.getMonth() === selectedDay.getMonth() &&
+           date.getFullYear() === selectedDay.getFullYear()
+  }
+
+  const getSeverityColor = (severity: string) => {
+    const colors: Record<string, string> = {
+      CRITICAL: 'bg-red-500',
+      HIGH: 'bg-orange-500',
+      MEDIUM: 'bg-amber-500',
+      LOW: 'bg-green-500'
+    }
+    return colors[severity] || 'bg-slate-400'
+  }
+
+  const getStatusBadge = (status: string) => {
+    const badges: Record<string, { bg: string; text: string; label: string }> = {
+      REPORTED: { bg: 'bg-blue-100', text: 'text-blue-700', label: 'Signale' },
+      INVESTIGATING: { bg: 'bg-amber-100', text: 'text-amber-700', label: 'En cours' },
+      CONFIRMED: { bg: 'bg-purple-100', text: 'text-purple-700', label: 'Confirme' },
+      RESOLVED: { bg: 'bg-emerald-100', text: 'text-emerald-700', label: 'Resolu' },
+      CLOSED: { bg: 'bg-slate-100', text: 'text-slate-700', label: 'Cloture' }
+    }
+    return badges[status] || { bg: 'bg-slate-100', text: 'text-slate-700', label: status }
+  }
+
+  const days = getDaysInMonth(currentDate)
+  const weekDays = ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim']
+  const months = ['Janvier', 'Fevrier', 'Mars', 'Avril', 'Mai', 'Juin', 'Juillet', 'Aout', 'Septembre', 'Octobre', 'Novembre', 'Decembre']
+
+  // Stats for the month
+  const monthStats = useMemo(() => {
+    return {
+      total: events.length,
+      reported: events.filter(e => e.status === 'REPORTED').length,
+      investigating: events.filter(e => e.status === 'INVESTIGATING').length,
+      resolved: events.filter(e => e.status === 'RESOLVED').length,
+    }
+  }, [events])
+
+  return (
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-display font-bold text-slate-800">Calendrier des Evenements</h1>
+          <p className="text-slate-500 mt-1">Vue mensuelle des evenements signales</p>
+        </div>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={goToToday}
+            className="px-4 py-2 text-sm font-medium text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors"
+          >
+            Aujourd'hui
+          </button>
+          <div className="flex items-center gap-1 bg-slate-100 rounded-lg p-1">
+            <button
+              onClick={() => setViewMode('month')}
+              className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${
+                viewMode === 'month' ? 'bg-white shadow text-slate-800' : 'text-slate-600 hover:text-slate-800'
+              }`}
+            >
+              Mois
+            </button>
+            <button
+              onClick={() => setViewMode('week')}
+              className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${
+                viewMode === 'week' ? 'bg-white shadow text-slate-800' : 'text-slate-600 hover:text-slate-800'
+              }`}
+            >
+              Semaine
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Stats Cards */}
+      <div className="grid grid-cols-4 gap-4">
+        <div className="bg-white rounded-xl p-4 border border-slate-200">
+          <div className="text-2xl font-bold text-slate-800">{monthStats.total}</div>
+          <div className="text-sm text-slate-500">Total ce mois</div>
+        </div>
+        <div className="bg-blue-50 rounded-xl p-4 border border-blue-200">
+          <div className="text-2xl font-bold text-blue-700">{monthStats.reported}</div>
+          <div className="text-sm text-blue-600">Signales</div>
+        </div>
+        <div className="bg-amber-50 rounded-xl p-4 border border-amber-200">
+          <div className="text-2xl font-bold text-amber-700">{monthStats.investigating}</div>
+          <div className="text-sm text-amber-600">En investigation</div>
+        </div>
+        <div className="bg-emerald-50 rounded-xl p-4 border border-emerald-200">
+          <div className="text-2xl font-bold text-emerald-700">{monthStats.resolved}</div>
+          <div className="text-sm text-emerald-600">Resolus</div>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Calendar */}
+        <div className="lg:col-span-2 bg-white rounded-2xl border border-slate-200 overflow-hidden">
+          {/* Month Navigation */}
+          <div className="flex items-center justify-between p-4 border-b border-slate-200 bg-gradient-to-r from-emerald-500 to-teal-500">
+            <button
+              onClick={() => navigateMonth(-1)}
+              className="p-2 text-white/80 hover:text-white hover:bg-white/10 rounded-lg transition-colors"
+            >
+              <ChevronLeft className="w-5 h-5" />
+            </button>
+            <h2 className="text-xl font-bold text-white">
+              {months[currentDate.getMonth()]} {currentDate.getFullYear()}
+            </h2>
+            <button
+              onClick={() => navigateMonth(1)}
+              className="p-2 text-white/80 hover:text-white hover:bg-white/10 rounded-lg transition-colors"
+            >
+              <ChevronRight className="w-5 h-5" />
+            </button>
+          </div>
+
+          {/* Week Days Header */}
+          <div className="grid grid-cols-7 bg-slate-50 border-b border-slate-200">
+            {weekDays.map(day => (
+              <div key={day} className="p-3 text-center text-sm font-semibold text-slate-600">
+                {day}
+              </div>
+            ))}
+          </div>
+
+          {/* Calendar Grid */}
+          {loading ? (
+            <div className="flex items-center justify-center py-20">
+              <RefreshCw className="w-6 h-6 text-emerald-500 animate-spin" />
+            </div>
+          ) : (
+            <div className="grid grid-cols-7">
+              {days.map((date, index) => {
+                const dayEvents = getEventsForDay(date)
+                const hasEvents = dayEvents.length > 0
+
+                return (
+                  <button
+                    key={index}
+                    onClick={() => date && setSelectedDay(date)}
+                    disabled={!date}
+                    className={`min-h-[100px] p-2 border-b border-r border-slate-100 text-left transition-colors ${
+                      !date ? 'bg-slate-50' :
+                      isSelected(date) ? 'bg-emerald-50 ring-2 ring-emerald-500 ring-inset' :
+                      isToday(date) ? 'bg-amber-50' :
+                      'hover:bg-slate-50'
+                    }`}
+                  >
+                    {date && (
+                      <>
+                        <div className={`text-sm font-medium mb-1 ${
+                          isToday(date) ? 'w-7 h-7 bg-emerald-500 text-white rounded-full flex items-center justify-center' :
+                          isSelected(date) ? 'text-emerald-700' :
+                          'text-slate-700'
+                        }`}>
+                          {date.getDate()}
+                        </div>
+                        {hasEvents && (
+                          <div className="space-y-1">
+                            {dayEvents.slice(0, 3).map(event => (
+                              <div
+                                key={event.id}
+                                className={`text-xs px-1.5 py-0.5 rounded truncate ${getSeverityColor(event.severity)} text-white`}
+                                title={event.title}
+                              >
+                                {event.code}
+                              </div>
+                            ))}
+                            {dayEvents.length > 3 && (
+                              <div className="text-xs text-slate-500 px-1">
+                                +{dayEvents.length - 3} autres
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </>
+                    )}
+                  </button>
+                )
+              })}
+            </div>
+          )}
+        </div>
+
+        {/* Selected Day Details */}
+        <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
+          <div className="p-4 border-b border-slate-200 bg-slate-50">
+            <h3 className="font-semibold text-slate-800">
+              {selectedDay
+                ? `${selectedDay.getDate()} ${months[selectedDay.getMonth()]} ${selectedDay.getFullYear()}`
+                : 'Selectionnez un jour'
+              }
+            </h3>
+            {selectedDay && (
+              <p className="text-sm text-slate-500 mt-1">
+                {getEventsForDay(selectedDay).length} evenement(s)
+              </p>
+            )}
+          </div>
+
+          <div className="p-4 max-h-[500px] overflow-y-auto">
+            {!selectedDay ? (
+              <div className="text-center py-8">
+                <Calendar className="w-12 h-12 text-slate-200 mx-auto mb-3" />
+                <p className="text-slate-500 text-sm">Cliquez sur un jour pour voir les evenements</p>
+              </div>
+            ) : getEventsForDay(selectedDay).length === 0 ? (
+              <div className="text-center py-8">
+                <Inbox className="w-12 h-12 text-slate-200 mx-auto mb-3" />
+                <p className="text-slate-500 text-sm">Aucun evenement ce jour</p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {getEventsForDay(selectedDay).map(event => {
+                  const statusBadge = getStatusBadge(event.status)
+                  return (
+                    <div
+                      key={event.id}
+                      className="p-3 bg-slate-50 rounded-xl hover:bg-slate-100 transition-colors cursor-pointer"
+                    >
+                      <div className="flex items-start justify-between mb-2">
+                        <span className="text-xs font-mono text-slate-500">{event.code}</span>
+                        <span className={`px-2 py-0.5 text-xs font-medium rounded-full ${statusBadge.bg} ${statusBadge.text}`}>
+                          {statusBadge.label}
+                        </span>
+                      </div>
+                      <p className="text-sm font-medium text-slate-800 line-clamp-2">{event.title}</p>
+                      <div className="flex items-center gap-2 mt-2">
+                        <span className={`w-2 h-2 rounded-full ${getSeverityColor(event.severity)}`} />
+                        <span className="text-xs text-slate-500">
+                          {new Date(event.date).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}
+                        </span>
+                        {event.category && (
+                          <>
+                            <span className="text-slate-300">|</span>
+                            <span className="text-xs text-slate-500">{event.category.name}</span>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Legend */}
+      <div className="bg-white rounded-xl border border-slate-200 p-4">
+        <h4 className="text-sm font-semibold text-slate-700 mb-3">Legende des priorites</h4>
+        <div className="flex flex-wrap gap-4">
+          {[
+            { label: 'Critique', color: 'bg-red-500' },
+            { label: 'Haute', color: 'bg-orange-500' },
+            { label: 'Moyenne', color: 'bg-amber-500' },
+            { label: 'Basse', color: 'bg-green-500' },
+          ].map(item => (
+            <div key={item.label} className="flex items-center gap-2">
+              <span className={`w-3 h-3 rounded ${item.color}`} />
+              <span className="text-sm text-slate-600">{item.label}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+/* ============================================
+   EVENTS KANBAN PAGE
+   ============================================ */
+interface KanbanEvent {
+  id: string
+  code: string
+  title: string
+  status: string
+  severity: string
+  location?: string
+  reportedAt: string
+  assignedTo?: { firstName: string; lastName: string }
+  category?: { name: string; color: string }
+}
+
+const KANBAN_COLUMNS = [
+  { id: 'REPORTED', label: 'Signales', color: 'bg-blue-500', lightBg: 'bg-blue-50', borderColor: 'border-blue-200' },
+  { id: 'INVESTIGATING', label: 'En investigation', color: 'bg-amber-500', lightBg: 'bg-amber-50', borderColor: 'border-amber-200' },
+  { id: 'CONFIRMED', label: 'Confirmes', color: 'bg-purple-500', lightBg: 'bg-purple-50', borderColor: 'border-purple-200' },
+  { id: 'RESOLVED', label: 'Resolus', color: 'bg-emerald-500', lightBg: 'bg-emerald-50', borderColor: 'border-emerald-200' },
+  { id: 'CLOSED', label: 'Clotures', color: 'bg-slate-500', lightBg: 'bg-slate-50', borderColor: 'border-slate-200' },
+]
+
+function EventsKanbanPage() {
+  const { t } = useTranslation()
+  const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
+
+  // State
+  const [events, setEvents] = useState<KanbanEvent[]>([])
+  const [loading, setLoading] = useState(true)
+  const [draggedEvent, setDraggedEvent] = useState<KanbanEvent | null>(null)
+  const [dragOverColumn, setDragOverColumn] = useState<string | null>(null)
+  const [filterSeverity, setFilterSeverity] = useState<string>('')
+  const [searchTerm, setSearchTerm] = useState('')
+
+  const getHeaders = () => {
+    const authData = localStorage.getItem('auth_token')
+    const token = authData ? JSON.parse(authData).token : null
+    return { 'Content-Type': 'application/json', ...(token && { 'Authorization': `Bearer ${token}` }) }
+  }
+
+  // Load events
+  useEffect(() => {
+    loadEvents()
+  }, [])
+
+  const loadEvents = async () => {
+    setLoading(true)
+    try {
+      const response = await fetch(`${API_URL}/api/events?pageSize=500`, { headers: getHeaders() })
+      if (response.ok) {
+        const data = await response.json()
+        setEvents((data.data?.items || data.data?.events || []).map((e: any) => ({
+          id: e.id,
+          code: e.code,
+          title: e.title,
+          status: e.status,
+          severity: e.severity,
+          location: e.location,
+          reportedAt: e.reportedAt,
+          assignedTo: e.assignedTo,
+          category: e.category
+        })))
+      }
+    } catch (error) {
+      console.error('Error loading events:', error)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  // Get events for a specific column
+  const getColumnEvents = (status: string) => {
+    return events
+      .filter(e => e.status === status)
+      .filter(e => !filterSeverity || e.severity === filterSeverity)
+      .filter(e => !searchTerm ||
+        e.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        e.code.toLowerCase().includes(searchTerm.toLowerCase())
+      )
+  }
+
+  // Handle drag start
+  const handleDragStart = (e: React.DragEvent, event: KanbanEvent) => {
+    setDraggedEvent(event)
+    e.dataTransfer.effectAllowed = 'move'
+    e.dataTransfer.setData('text/plain', event.id)
+    ;(e.target as HTMLElement).classList.add('opacity-50', 'rotate-2')
+  }
+
+  // Handle drag end
+  const handleDragEnd = (e: React.DragEvent) => {
+    ;(e.target as HTMLElement).classList.remove('opacity-50', 'rotate-2')
+    setDraggedEvent(null)
+    setDragOverColumn(null)
+  }
+
+  // Handle drag over column
+  const handleDragOver = (e: React.DragEvent, columnId: string) => {
+    e.preventDefault()
+    e.dataTransfer.dropEffect = 'move'
+    setDragOverColumn(columnId)
+  }
+
+  // Handle drop on column
+  const handleDrop = async (e: React.DragEvent, newStatus: string) => {
+    e.preventDefault()
+    setDragOverColumn(null)
+
+    if (!draggedEvent || draggedEvent.status === newStatus) return
+
+    // Optimistic update
+    setEvents(prev => prev.map(event =>
+      event.id === draggedEvent.id ? { ...event, status: newStatus } : event
+    ))
+
+    // API call to update status
+    try {
+      const response = await fetch(`${API_URL}/api/events/${draggedEvent.id}/status`, {
+        method: 'PATCH',
+        headers: getHeaders(),
+        body: JSON.stringify({ status: newStatus })
+      })
+
+      if (!response.ok) {
+        // Revert on failure
+        setEvents(prev => prev.map(event =>
+          event.id === draggedEvent.id ? { ...event, status: draggedEvent.status } : event
+        ))
+        alert('Erreur lors du changement de statut')
+      }
+    } catch (error) {
+      // Revert on error
+      setEvents(prev => prev.map(event =>
+        event.id === draggedEvent.id ? { ...event, status: draggedEvent.status } : event
+      ))
+      console.error('Error updating status:', error)
+    }
+
+    setDraggedEvent(null)
+  }
+
+  const getSeverityBadge = (severity: string) => {
+    const badges: Record<string, { bg: string; text: string; label: string }> = {
+      CRITICAL: { bg: 'bg-red-100', text: 'text-red-700', label: 'Critique' },
+      HIGH: { bg: 'bg-orange-100', text: 'text-orange-700', label: 'Haute' },
+      MEDIUM: { bg: 'bg-amber-100', text: 'text-amber-700', label: 'Moyenne' },
+      LOW: { bg: 'bg-green-100', text: 'text-green-700', label: 'Basse' }
+    }
+    return badges[severity] || { bg: 'bg-slate-100', text: 'text-slate-700', label: severity }
+  }
+
+  return (
+    <div className="h-[calc(100vh-120px)] flex flex-col">
+      {/* Header */}
+      <div className="flex items-center justify-between mb-6">
+        <div>
+          <h1 className="text-2xl font-display font-bold text-slate-800">Tableau Kanban</h1>
+          <p className="text-slate-500 mt-1">Glissez-deposez les evenements pour changer leur statut</p>
+        </div>
+        <div className="flex items-center gap-3">
+          {/* Search */}
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+            <input
+              type="text"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              placeholder="Rechercher..."
+              className="pl-10 pr-4 py-2 w-64 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none"
+            />
+          </div>
+
+          {/* Severity Filter */}
+          <select
+            value={filterSeverity}
+            onChange={(e) => setFilterSeverity(e.target.value)}
+            className="px-4 py-2 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none"
+          >
+            <option value="">Toutes priorites</option>
+            <option value="CRITICAL">Critique</option>
+            <option value="HIGH">Haute</option>
+            <option value="MEDIUM">Moyenne</option>
+            <option value="LOW">Basse</option>
+          </select>
+
+          {/* Refresh */}
+          <button
+            onClick={loadEvents}
+            disabled={loading}
+            className="p-2 hover:bg-slate-100 rounded-xl transition-colors"
+          >
+            <RefreshCw className={`w-5 h-5 text-slate-500 ${loading ? 'animate-spin' : ''}`} />
+          </button>
+        </div>
+      </div>
+
+      {/* Kanban Board */}
+      <div className="flex-1 flex gap-4 overflow-x-auto pb-4">
+        {KANBAN_COLUMNS.map(column => {
+          const columnEvents = getColumnEvents(column.id)
+          const isDropTarget = dragOverColumn === column.id && draggedEvent?.status !== column.id
+
+          return (
+            <div
+              key={column.id}
+              className="flex-shrink-0 w-72 flex flex-col"
+              onDragOver={(e) => handleDragOver(e, column.id)}
+              onDragLeave={() => setDragOverColumn(null)}
+              onDrop={(e) => handleDrop(e, column.id)}
+            >
+              {/* Column Header */}
+              <div className={`${column.lightBg} rounded-t-xl p-3 border ${column.borderColor} border-b-0`}>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <div className={`w-3 h-3 rounded-full ${column.color}`} />
+                    <span className="font-semibold text-slate-700">{column.label}</span>
+                  </div>
+                  <span className="px-2 py-0.5 bg-white rounded-full text-xs font-bold text-slate-600">
+                    {columnEvents.length}
+                  </span>
+                </div>
+              </div>
+
+              {/* Column Body */}
+              <div
+                className={`flex-1 bg-slate-50 rounded-b-xl p-2 border ${column.borderColor} border-t-0 overflow-y-auto transition-colors ${
+                  isDropTarget ? 'bg-emerald-50 border-emerald-300' : ''
+                }`}
+              >
+                {loading && columnEvents.length === 0 ? (
+                  <div className="flex items-center justify-center py-8">
+                    <RefreshCw className="w-5 h-5 text-slate-400 animate-spin" />
+                  </div>
+                ) : columnEvents.length === 0 ? (
+                  <div className="text-center py-8">
+                    <Inbox className="w-8 h-8 text-slate-200 mx-auto mb-2" />
+                    <p className="text-xs text-slate-400">Aucun evenement</p>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {columnEvents.map(event => {
+                      const severityBadge = getSeverityBadge(event.severity)
+                      return (
+                        <div
+                          key={event.id}
+                          draggable
+                          onDragStart={(e) => handleDragStart(e, event)}
+                          onDragEnd={handleDragEnd}
+                          className="bg-white rounded-xl p-3 border border-slate-200 shadow-sm cursor-grab active:cursor-grabbing hover:shadow-md hover:border-emerald-200 transition-all group"
+                        >
+                          {/* Event Header */}
+                          <div className="flex items-start justify-between mb-2">
+                            <span className="text-xs font-mono text-slate-400">{event.code}</span>
+                            <span className={`px-1.5 py-0.5 text-[10px] font-bold rounded ${severityBadge.bg} ${severityBadge.text}`}>
+                              {severityBadge.label}
+                            </span>
+                          </div>
+
+                          {/* Event Title */}
+                          <p className="text-sm font-medium text-slate-800 line-clamp-2 mb-2 group-hover:text-emerald-700 transition-colors">
+                            {event.title}
+                          </p>
+
+                          {/* Event Meta */}
+                          <div className="flex items-center gap-2 text-xs text-slate-500">
+                            {event.location && (
+                              <div className="flex items-center gap-1">
+                                <MapPin className="w-3 h-3" />
+                                <span className="truncate max-w-[80px]">{event.location}</span>
+                              </div>
+                            )}
+                            <span className="text-slate-300">|</span>
+                            <span>
+                              {new Date(event.reportedAt).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short' })}
+                            </span>
+                          </div>
+
+                          {/* Assigned To */}
+                          {event.assignedTo && (
+                            <div className="flex items-center gap-2 mt-2 pt-2 border-t border-slate-100">
+                              <div className="w-5 h-5 rounded-full bg-slate-200 flex items-center justify-center text-[10px] font-bold text-slate-500">
+                                {event.assignedTo.firstName?.[0]}{event.assignedTo.lastName?.[0]}
+                              </div>
+                              <span className="text-xs text-slate-500">
+                                {event.assignedTo.firstName} {event.assignedTo.lastName}
+                              </span>
+                            </div>
+                          )}
+
+                          {/* Category */}
+                          {event.category && (
+                            <div className="flex items-center gap-1.5 mt-2">
+                              <span
+                                className="w-2 h-2 rounded-full"
+                                style={{ backgroundColor: event.category.color }}
+                              />
+                              <span className="text-xs text-slate-500">{event.category.name}</span>
+                            </div>
+                          )}
+
+                          {/* Drag Handle Indicator */}
+                          <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                            <GripVertical className="w-4 h-4 text-slate-300" />
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
+
+                {/* Drop Zone Indicator */}
+                {isDropTarget && (
+                  <div className="mt-2 p-4 border-2 border-dashed border-emerald-300 rounded-xl text-center">
+                    <p className="text-sm text-emerald-600 font-medium">Deposer ici</p>
+                  </div>
+                )}
+              </div>
+            </div>
+          )
+        })}
+      </div>
+
+      {/* Stats Footer */}
+      <div className="mt-4 bg-white rounded-xl border border-slate-200 p-4">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-6">
+            {KANBAN_COLUMNS.map(column => (
+              <div key={column.id} className="flex items-center gap-2">
+                <div className={`w-3 h-3 rounded-full ${column.color}`} />
+                <span className="text-sm text-slate-600">{column.label}:</span>
+                <span className="text-sm font-bold text-slate-800">{getColumnEvents(column.id).length}</span>
+              </div>
+            ))}
+          </div>
+          <div className="text-sm text-slate-500">
+            Total: <span className="font-bold text-slate-800">{events.length}</span> evenements
+          </div>
         </div>
       </div>
     </div>
@@ -15540,6 +18447,7 @@ interface EventData {
   confirmedAt?: string
   resolvedAt?: string
   closedAt?: string
+  deadline?: string
   createdAt: string
   updatedAt: string
   comments?: any[]
@@ -15762,12 +18670,205 @@ function EventsPage({ initialStatus = 'INVESTIGATING' }: { initialStatus?: strin
   const [importProgress, setImportProgress] = useState(0)
   const [importResults, setImportResults] = useState<{ success: number; failed: number; errors: string[] }>({ success: 0, failed: 0, errors: [] })
 
-  // Comments state
-  const [comments, setComments] = useState<{ id: string; content: string; authorId: string; author?: { firstName: string; lastName: string }; createdAt: string; updatedAt?: string }[]>([])
+  // Comments state with enhanced features
+  interface CommentReaction {
+    emoji: string
+    users: string[]
+    count: number
+  }
+
+  interface EnhancedComment {
+    id: string
+    content: string
+    authorId: string
+    author?: { id?: string; firstName: string; lastName: string }
+    createdAt: string
+    updatedAt?: string
+    parentId?: string | null
+    reactions?: CommentReaction[]
+    replies?: EnhancedComment[]
+    mentions?: string[]
+  }
+
+  const [comments, setComments] = useState<EnhancedComment[]>([])
   const [newComment, setNewComment] = useState('')
   const [editingCommentId, setEditingCommentId] = useState<string | null>(null)
   const [editingCommentContent, setEditingCommentContent] = useState('')
   const [loadingComments, setLoadingComments] = useState(false)
+  const [replyingToId, setReplyingToId] = useState<string | null>(null)
+  const [replyContent, setReplyContent] = useState('')
+  const [showEmojiPicker, setShowEmojiPicker] = useState<string | null>(null)
+  const [mentionSearch, setMentionSearch] = useState('')
+  const [showMentionDropdown, setShowMentionDropdown] = useState(false)
+  const [cursorPosition, setCursorPosition] = useState(0)
+
+  // Available reactions
+  const REACTIONS = [
+    { emoji: '👍', name: 'like' },
+    { emoji: '❤️', name: 'love' },
+    { emoji: '🎉', name: 'celebrate' },
+    { emoji: '🤔', name: 'thinking' },
+    { emoji: '👀', name: 'eyes' },
+    { emoji: '🚀', name: 'rocket' },
+  ]
+
+  // Toggle reaction on a comment
+  const toggleReaction = (commentId: string, emoji: string) => {
+    const currentUserId = localStorage.getItem('user_session')
+      ? JSON.parse(localStorage.getItem('user_session') || '{}').id
+      : 'anonymous'
+
+    setComments(prev => prev.map(comment => {
+      if (comment.id === commentId) {
+        const reactions = comment.reactions || []
+        const existingReaction = reactions.find(r => r.emoji === emoji)
+
+        if (existingReaction) {
+          if (existingReaction.users.includes(currentUserId)) {
+            // Remove user's reaction
+            const updatedUsers = existingReaction.users.filter(u => u !== currentUserId)
+            if (updatedUsers.length === 0) {
+              return {
+                ...comment,
+                reactions: reactions.filter(r => r.emoji !== emoji)
+              }
+            }
+            return {
+              ...comment,
+              reactions: reactions.map(r =>
+                r.emoji === emoji
+                  ? { ...r, users: updatedUsers, count: updatedUsers.length }
+                  : r
+              )
+            }
+          } else {
+            // Add user's reaction
+            return {
+              ...comment,
+              reactions: reactions.map(r =>
+                r.emoji === emoji
+                  ? { ...r, users: [...r.users, currentUserId], count: r.users.length + 1 }
+                  : r
+              )
+            }
+          }
+        } else {
+          // Create new reaction
+          return {
+            ...comment,
+            reactions: [...reactions, { emoji, users: [currentUserId], count: 1 }]
+          }
+        }
+      }
+      return comment
+    }))
+  }
+
+  // Add reply to comment
+  const addReply = async (parentId: string) => {
+    if (!replyContent.trim() || !selectedEvent) return
+
+    try {
+      setLoadingComments(true)
+      const response = await fetch(`${API_URL}/api/events/${selectedEvent.id}/comments`, {
+        method: 'POST',
+        headers: getHeaders(),
+        body: JSON.stringify({ content: replyContent, parentId })
+      })
+
+      if (response.ok) {
+        setReplyContent('')
+        setReplyingToId(null)
+        loadComments(selectedEvent.id)
+      } else {
+        // Fallback: add locally
+        const newReply: EnhancedComment = {
+          id: Date.now().toString(),
+          content: replyContent,
+          authorId: 'current-user',
+          author: { firstName: 'Moi', lastName: '' },
+          createdAt: new Date().toISOString(),
+          parentId
+        }
+        setComments(prev => prev.map(c =>
+          c.id === parentId
+            ? { ...c, replies: [...(c.replies || []), newReply] }
+            : c
+        ))
+        setReplyContent('')
+        setReplyingToId(null)
+      }
+    } catch (error) {
+      console.error('Error adding reply:', error)
+    } finally {
+      setLoadingComments(false)
+    }
+  }
+
+  // Handle mention input
+  const handleCommentInput = (value: string, inputRef?: HTMLTextAreaElement | null) => {
+    setNewComment(value)
+
+    // Check for @mention
+    const lastAtIndex = value.lastIndexOf('@')
+    if (lastAtIndex !== -1) {
+      const afterAt = value.substring(lastAtIndex + 1)
+      const spaceAfterAt = afterAt.indexOf(' ')
+      const searchTerm = spaceAfterAt === -1 ? afterAt : ''
+
+      if (searchTerm && searchTerm.length > 0) {
+        setMentionSearch(searchTerm)
+        setShowMentionDropdown(true)
+        if (inputRef) {
+          setCursorPosition(inputRef.selectionStart || 0)
+        }
+      } else {
+        setShowMentionDropdown(false)
+      }
+    } else {
+      setShowMentionDropdown(false)
+    }
+  }
+
+  // Insert mention
+  const insertMention = (user: { id: string; firstName: string; lastName: string }) => {
+    const lastAtIndex = newComment.lastIndexOf('@')
+    const beforeAt = newComment.substring(0, lastAtIndex)
+    const afterSearch = newComment.substring(cursorPosition)
+    const mention = `@${user.firstName}${user.lastName} `
+    setNewComment(beforeAt + mention + afterSearch.trimStart())
+    setShowMentionDropdown(false)
+    setMentionSearch('')
+  }
+
+  // Filter users for mention autocomplete
+  const filteredMentionUsers = useMemo(() => {
+    if (!mentionSearch) return []
+    const search = mentionSearch.toLowerCase()
+    return users.filter(u =>
+      u.firstName?.toLowerCase().includes(search) ||
+      u.lastName?.toLowerCase().includes(search)
+    ).slice(0, 5)
+  }, [users, mentionSearch])
+
+  // Parse comment content for mentions and format
+  const formatCommentContent = (content: string) => {
+    // Simple mention highlighting
+    const mentionRegex = /@(\w+\s?\w*)/g
+    const parts = content.split(mentionRegex)
+
+    return parts.map((part, index) => {
+      if (index % 2 === 1) {
+        // This is a mention
+        return (
+          <span key={index} className="text-emerald-600 font-medium hover:underline cursor-pointer">
+            @{part}
+          </span>
+        )
+      }
+      return part
+    })
+  }
 
   // Timeline state
   const [timeline, setTimeline] = useState<{
@@ -15779,6 +18880,40 @@ function EventsPage({ initialStatus = 'INVESTIGATING' }: { initialStatus?: strin
     createdAt: string
   }[]>([])
   const [loadingTimeline, setLoadingTimeline] = useState(false)
+
+  // Reminder state
+  const [showReminderModal, setShowReminderModal] = useState(false)
+  const reminderSystem = useReminders((reminder) => {
+    // Toast notification when reminder triggers
+    toast.custom((t) => (
+      <div className={`${t.visible ? 'animate-enter' : 'animate-leave'} max-w-md w-full bg-amber-50 border border-amber-200 rounded-2xl shadow-lg p-4`}>
+        <div className="flex items-start gap-3">
+          <div className="w-10 h-10 rounded-full bg-amber-100 flex items-center justify-center flex-shrink-0">
+            <Bell className="w-5 h-5 text-amber-600" />
+          </div>
+          <div className="flex-1">
+            <p className="font-semibold text-amber-800">Rappel: {reminder.eventCode}</p>
+            <p className="text-sm text-amber-600">{reminder.eventTitle}</p>
+            <button
+              onClick={() => {
+                setSelectedEvent(events.find(e => e.id === reminder.eventId) || null)
+                if (events.find(e => e.id === reminder.eventId)) {
+                  setCurrentView('detail')
+                }
+                toast.dismiss(t.id)
+              }}
+              className="mt-2 text-sm text-amber-700 hover:text-amber-800 font-medium"
+            >
+              Voir l'événement →
+            </button>
+          </div>
+          <button onClick={() => toast.dismiss(t.id)} className="text-amber-400 hover:text-amber-600">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      </div>
+    ), { duration: 10000 })
+  })
 
   // Loading states
   const [loading, setLoading] = useState(true)
@@ -17306,6 +20441,20 @@ function EventsPage({ initialStatus = 'INVESTIGATING' }: { initialStatus?: strin
               <FileDown className="w-4 h-4" />
               Exporter PDF
             </button>
+            {/* Reminder Button */}
+            <button
+              onClick={() => setShowReminderModal(true)}
+              className="flex items-center gap-2 px-4 py-2.5 bg-amber-50 text-amber-700 rounded-xl hover:bg-amber-100 transition-colors relative"
+              title="Configurer un rappel"
+            >
+              <Bell className="w-4 h-4" />
+              Rappel
+              {reminderSystem.getRemindersForEvent(selectedEvent.id).length > 0 && (
+                <span className="absolute -top-1 -right-1 w-5 h-5 bg-amber-500 text-white text-xs rounded-full flex items-center justify-center">
+                  {reminderSystem.getRemindersForEvent(selectedEvent.id).length}
+                </span>
+              )}
+            </button>
           </div>
         </div>
 
@@ -17520,7 +20669,7 @@ function EventsPage({ initialStatus = 'INVESTIGATING' }: { initialStatus?: strin
               )}
             </div>
 
-            {/* Comments Section */}
+            {/* Enhanced Comments Section */}
             <div className="bg-white rounded-2xl border border-slate-200 p-6">
               <div className="flex items-center justify-between mb-4">
                 <h3 className="font-semibold text-slate-800 flex items-center gap-2">
@@ -17530,21 +20679,41 @@ function EventsPage({ initialStatus = 'INVESTIGATING' }: { initialStatus?: strin
                 {loadingComments && <RefreshCw className="w-4 h-4 text-slate-400 animate-spin" />}
               </div>
 
-              {/* Add new comment */}
-              <div className="mb-4">
+              {/* Add new comment with mentions */}
+              <div className="mb-6 relative">
                 <div className="flex gap-3">
                   <div className="w-8 h-8 rounded-full bg-emerald-100 flex items-center justify-center flex-shrink-0">
                     <User className="w-4 h-4 text-emerald-600" />
                   </div>
-                  <div className="flex-1">
+                  <div className="flex-1 relative">
                     <textarea
                       value={newComment}
-                      onChange={(e) => setNewComment(e.target.value)}
-                      placeholder="Ajouter un commentaire..."
-                      rows={2}
-                      className="w-full px-3 py-2 text-sm border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none resize-none"
+                      onChange={(e) => handleCommentInput(e.target.value, e.target)}
+                      placeholder="Ajouter un commentaire... Utilisez @ pour mentionner"
+                      rows={3}
+                      className="w-full px-4 py-3 text-sm border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none resize-none"
                     />
-                    <div className="flex justify-end mt-2">
+
+                    {/* Mention dropdown */}
+                    {showMentionDropdown && filteredMentionUsers.length > 0 && (
+                      <div className="absolute left-0 right-0 mt-1 bg-white rounded-xl shadow-lg border border-slate-200 overflow-hidden z-10">
+                        {filteredMentionUsers.map(user => (
+                          <button
+                            key={user.id}
+                            onClick={() => insertMention(user)}
+                            className="w-full flex items-center gap-3 px-4 py-2 hover:bg-slate-50 transition-colors text-left"
+                          >
+                            <div className="w-7 h-7 rounded-full bg-blue-100 flex items-center justify-center text-xs font-bold text-blue-600">
+                              {user.firstName?.[0]}{user.lastName?.[0]}
+                            </div>
+                            <span className="text-sm text-slate-700">{user.firstName} {user.lastName}</span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+
+                    <div className="flex items-center justify-between mt-2">
+                      <span className="text-xs text-slate-400">Astuce: @nom pour mentionner un utilisateur</span>
                       <button
                         onClick={addComment}
                         disabled={!newComment.trim() || loadingComments}
@@ -17558,83 +20727,204 @@ function EventsPage({ initialStatus = 'INVESTIGATING' }: { initialStatus?: strin
                 </div>
               </div>
 
-              {/* Comments list */}
+              {/* Comments list with reactions and replies */}
               {comments.length > 0 ? (
-                <div className="space-y-4">
-                  {comments.map(comment => (
-                    <div key={comment.id} className="flex gap-3 group">
-                      <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center flex-shrink-0 text-xs font-bold text-blue-600">
-                        {comment.author?.firstName?.[0]}{comment.author?.lastName?.[0]}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 mb-1">
-                          <span className="text-sm font-medium text-slate-800">
-                            {comment.author?.firstName} {comment.author?.lastName}
-                          </span>
-                          <span className="text-xs text-slate-400">
-                            {new Date(comment.createdAt).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' })}
-                          </span>
-                          {comment.updatedAt && comment.updatedAt !== comment.createdAt && (
-                            <span className="text-xs text-slate-400">(modifié)</span>
-                          )}
+                <div className="space-y-6">
+                  {comments.filter(c => !c.parentId).map(comment => (
+                    <div key={comment.id} className="group">
+                      <div className="flex gap-3">
+                        <div className="w-9 h-9 rounded-full bg-blue-100 flex items-center justify-center flex-shrink-0 text-xs font-bold text-blue-600">
+                          {comment.author?.firstName?.[0]}{comment.author?.lastName?.[0]}
                         </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 mb-1">
+                            <span className="text-sm font-semibold text-slate-800">
+                              {comment.author?.firstName} {comment.author?.lastName}
+                            </span>
+                            <span className="text-xs text-slate-400">
+                              {new Date(comment.createdAt).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' })}
+                            </span>
+                            {comment.updatedAt && comment.updatedAt !== comment.createdAt && (
+                              <span className="text-xs text-slate-400 italic">(modifie)</span>
+                            )}
+                          </div>
 
-                        {editingCommentId === comment.id ? (
-                          <div>
-                            <textarea
-                              value={editingCommentContent}
-                              onChange={(e) => setEditingCommentContent(e.target.value)}
-                              rows={2}
-                              className="w-full px-3 py-2 text-sm border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none resize-none"
-                            />
-                            <div className="flex gap-2 mt-2">
+                          {editingCommentId === comment.id ? (
+                            <div>
+                              <textarea
+                                value={editingCommentContent}
+                                onChange={(e) => setEditingCommentContent(e.target.value)}
+                                rows={2}
+                                className="w-full px-3 py-2 text-sm border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none resize-none"
+                              />
+                              <div className="flex gap-2 mt-2">
+                                <button
+                                  onClick={() => updateComment(comment.id)}
+                                  disabled={loadingComments}
+                                  className="px-3 py-1.5 text-xs bg-emerald-500 text-white rounded-lg hover:bg-emerald-600 transition-colors disabled:opacity-50"
+                                >
+                                  Enregistrer
+                                </button>
+                                <button
+                                  onClick={cancelEditComment}
+                                  className="px-3 py-1.5 text-xs text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
+                                >
+                                  Annuler
+                                </button>
+                              </div>
+                            </div>
+                          ) : (
+                            <p className="text-sm text-slate-600 whitespace-pre-wrap leading-relaxed">
+                              {formatCommentContent(comment.content)}
+                            </p>
+                          )}
+
+                          {/* Reactions display */}
+                          {comment.reactions && comment.reactions.length > 0 && (
+                            <div className="flex flex-wrap gap-1.5 mt-2">
+                              {comment.reactions.map(reaction => (
+                                <button
+                                  key={reaction.emoji}
+                                  onClick={() => toggleReaction(comment.id, reaction.emoji)}
+                                  className={`flex items-center gap-1 px-2 py-0.5 rounded-full text-xs transition-colors ${
+                                    reaction.users.includes(localStorage.getItem('user_session') ? JSON.parse(localStorage.getItem('user_session') || '{}').id : '')
+                                      ? 'bg-emerald-100 text-emerald-700 border border-emerald-200'
+                                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                                  }`}
+                                >
+                                  <span>{reaction.emoji}</span>
+                                  <span className="font-medium">{reaction.count}</span>
+                                </button>
+                              ))}
+                            </div>
+                          )}
+
+                          {/* Actions bar */}
+                          {editingCommentId !== comment.id && (
+                            <div className="flex items-center gap-1 mt-2">
+                              {/* Reaction button */}
+                              <div className="relative">
+                                <button
+                                  onClick={() => setShowEmojiPicker(showEmojiPicker === comment.id ? null : comment.id)}
+                                  className="p-1.5 text-slate-400 hover:text-amber-500 hover:bg-amber-50 rounded-lg transition-colors"
+                                  title="Ajouter une reaction"
+                                >
+                                  <span className="text-sm">+</span>
+                                  <Star className="w-3.5 h-3.5 inline" />
+                                </button>
+                                {showEmojiPicker === comment.id && (
+                                  <div className="absolute left-0 top-full mt-1 bg-white rounded-xl shadow-lg border border-slate-200 p-2 z-20 flex gap-1">
+                                    {REACTIONS.map(r => (
+                                      <button
+                                        key={r.name}
+                                        onClick={() => {
+                                          toggleReaction(comment.id, r.emoji)
+                                          setShowEmojiPicker(null)
+                                        }}
+                                        className="w-8 h-8 flex items-center justify-center hover:bg-slate-100 rounded-lg transition-colors text-lg"
+                                        title={r.name}
+                                      >
+                                        {r.emoji}
+                                      </button>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
+
+                              {/* Reply button */}
                               <button
-                                onClick={() => updateComment(comment.id)}
-                                disabled={loadingComments}
-                                className="px-3 py-1.5 text-xs bg-emerald-500 text-white rounded-lg hover:bg-emerald-600 transition-colors disabled:opacity-50"
+                                onClick={() => setReplyingToId(replyingToId === comment.id ? null : comment.id)}
+                                className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors flex items-center gap-1"
+                                title="Repondre"
                               >
-                                Enregistrer
+                                <RotateCcw className="w-3.5 h-3.5" />
+                                <span className="text-xs">Repondre</span>
                               </button>
+
+                              {/* Edit button */}
                               <button
-                                onClick={cancelEditComment}
-                                className="px-3 py-1.5 text-xs text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
+                                onClick={() => startEditComment(comment)}
+                                className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors opacity-0 group-hover:opacity-100"
+                                title="Modifier"
                               >
-                                Annuler
+                                <Edit3 className="w-3.5 h-3.5" />
+                              </button>
+
+                              {/* Delete button */}
+                              <button
+                                onClick={() => deleteComment(comment.id)}
+                                className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors opacity-0 group-hover:opacity-100"
+                                title="Supprimer"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
                               </button>
                             </div>
-                          </div>
-                        ) : (
-                          <p className="text-sm text-slate-600 whitespace-pre-wrap">{comment.content}</p>
-                        )}
+                          )}
 
-                        {/* Actions (visible on hover) */}
-                        {editingCommentId !== comment.id && (
-                          <div className="flex gap-1 mt-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                            <button
-                              onClick={() => startEditComment(comment)}
-                              className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
-                              title="Modifier"
-                            >
-                              <Edit3 className="w-3.5 h-3.5" />
-                            </button>
-                            <button
-                              onClick={() => deleteComment(comment.id)}
-                              className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                              title="Supprimer"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
-                          </div>
-                        )}
+                          {/* Reply form */}
+                          {replyingToId === comment.id && (
+                            <div className="mt-3 pl-4 border-l-2 border-emerald-200">
+                              <textarea
+                                value={replyContent}
+                                onChange={(e) => setReplyContent(e.target.value)}
+                                placeholder={`Repondre a ${comment.author?.firstName}...`}
+                                rows={2}
+                                className="w-full px-3 py-2 text-sm border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none resize-none"
+                                autoFocus
+                              />
+                              <div className="flex gap-2 mt-2">
+                                <button
+                                  onClick={() => addReply(comment.id)}
+                                  disabled={!replyContent.trim() || loadingComments}
+                                  className="px-3 py-1.5 text-xs bg-emerald-500 text-white rounded-lg hover:bg-emerald-600 transition-colors disabled:opacity-50"
+                                >
+                                  Repondre
+                                </button>
+                                <button
+                                  onClick={() => { setReplyingToId(null); setReplyContent('') }}
+                                  className="px-3 py-1.5 text-xs text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
+                                >
+                                  Annuler
+                                </button>
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Replies */}
+                          {comment.replies && comment.replies.length > 0 && (
+                            <div className="mt-4 pl-4 border-l-2 border-slate-200 space-y-3">
+                              {comment.replies.map(reply => (
+                                <div key={reply.id} className="flex gap-2">
+                                  <div className="w-7 h-7 rounded-full bg-slate-100 flex items-center justify-center flex-shrink-0 text-xs font-bold text-slate-500">
+                                    {reply.author?.firstName?.[0]}{reply.author?.lastName?.[0]}
+                                  </div>
+                                  <div className="flex-1 min-w-0">
+                                    <div className="flex items-center gap-2">
+                                      <span className="text-xs font-semibold text-slate-700">
+                                        {reply.author?.firstName} {reply.author?.lastName}
+                                      </span>
+                                      <span className="text-xs text-slate-400">
+                                        {new Date(reply.createdAt).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' })}
+                                      </span>
+                                    </div>
+                                    <p className="text-sm text-slate-600 mt-0.5">{formatCommentContent(reply.content)}</p>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
                       </div>
                     </div>
                   ))}
                 </div>
               ) : (
-                <div className="text-center py-6">
-                  <MessageSquare className="w-10 h-10 text-slate-200 mx-auto mb-2" />
-                  <p className="text-slate-500 text-sm">Aucun commentaire</p>
-                  <p className="text-slate-400 text-xs mt-1">Soyez le premier à commenter</p>
+                <div className="text-center py-8">
+                  <div className="w-16 h-16 bg-slate-100 rounded-2xl flex items-center justify-center mx-auto mb-3">
+                    <MessageSquare className="w-8 h-8 text-slate-300" />
+                  </div>
+                  <p className="text-slate-600 font-medium">Aucun commentaire</p>
+                  <p className="text-slate-400 text-sm mt-1">Soyez le premier a commenter cet evenement</p>
                 </div>
               )}
             </div>
@@ -17848,6 +21138,19 @@ function EventsPage({ initialStatus = 'INVESTIGATING' }: { initialStatus?: strin
             </div>
           </div>
         )}
+
+        {/* Reminder Modal */}
+        <ReminderModal
+          isOpen={showReminderModal}
+          onClose={() => setShowReminderModal(false)}
+          eventId={selectedEvent.id}
+          eventTitle={selectedEvent.title}
+          eventCode={selectedEvent.code}
+          eventDeadline={selectedEvent.deadline}
+          existingReminders={reminderSystem.getRemindersForEvent(selectedEvent.id)}
+          onAddReminder={reminderSystem.addReminder}
+          onRemoveReminder={reminderSystem.removeReminder}
+        />
       </div>
     )
   }
@@ -18587,6 +21890,41 @@ function App() {
   // Real-time notifications
   const realTimeNotifs = useRealTimeNotifications()
 
+  // Reminder system
+  const reminderSystem = useReminders((reminder) => {
+    // When a reminder triggers, show a notification
+    realTimeNotifs.addNotification({
+      type: 'warning',
+      title: `Rappel: ${reminder.eventCode}`,
+      message: reminder.eventTitle,
+      data: { eventId: reminder.eventId }
+    })
+    playNotificationSound()
+  })
+
+  // PWA status
+  const pwa = usePWA()
+
+  // Keyboard shortcuts modal state
+  const [showShortcutsModal, setShowShortcutsModal] = useState(false)
+
+  // Theme system
+  const { theme, themes, setTheme } = useTheme()
+  const [showThemeModal, setShowThemeModal] = useState(false)
+
+  // Onboarding tutorial
+  const onboarding = useOnboarding()
+
+  // Show onboarding for first-time users after a delay
+  useEffect(() => {
+    if (!onboarding.hasCompleted && !onboarding.isActive) {
+      const timer = setTimeout(() => {
+        onboarding.startTour()
+      }, 2000) // Wait 2 seconds before showing
+      return () => clearTimeout(timer)
+    }
+  }, [])
+
   // WebSocket connection for real-time updates
   const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
   const wsUrl = API_URL.replace('http', 'ws') + '/ws/notifications'
@@ -18725,6 +22063,27 @@ function App() {
     return () => clearInterval(interval)
   }, [isAuthenticated])
 
+  // Keyboard shortcuts handler
+  const openSearchFromShortcut = () => {
+    const searchInput = document.querySelector('input[placeholder*="Rechercher"]') as HTMLInputElement
+    if (searchInput) {
+      searchInput.focus()
+    }
+  }
+
+  // Use keyboard shortcuts hook (only when authenticated)
+  useKeyboardShortcuts({
+    onNavigate: setCurrentPage,
+    onToggleSidebar: () => setSidebarCollapsed(prev => !prev),
+    onToggleDarkMode: toggleDarkMode,
+    onOpenShortcutsModal: () => setShowShortcutsModal(true),
+    onOpenSearch: openSearchFromShortcut,
+    onNewEvent: () => {
+      setCurrentPage('events-inprogress')
+      // Could trigger new event modal here in the future
+    }
+  })
+
   if (!isAuthenticated) {
     return <LoginPage onLogin={handleLogin} />
   }
@@ -18757,7 +22116,108 @@ function App() {
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-900 transition-colors duration-300">
-      <Sidebar
+      {/* Keyboard Shortcuts Modal */}
+      <KeyboardShortcutsModal
+        isOpen={showShortcutsModal}
+        onClose={() => setShowShortcutsModal(false)}
+      />
+
+      {/* Onboarding Tour */}
+      <OnboardingTour
+        isActive={onboarding.isActive}
+        step={onboarding.step}
+        currentStep={onboarding.currentStep}
+        totalSteps={onboarding.totalSteps}
+        onNext={onboarding.nextStep}
+        onPrev={onboarding.prevStep}
+        onSkip={() => onboarding.endTour(false)}
+      />
+
+      {/* Theme Selector Modal */}
+      <ThemeSelectorModal
+        isOpen={showThemeModal}
+        onClose={() => setShowThemeModal(false)}
+        currentTheme={theme}
+        themes={themes}
+        onSelectTheme={setTheme}
+      />
+
+      {/* PWA Status Banners */}
+      {!pwa.isOnline && (
+        <div className="fixed top-0 left-0 right-0 z-50 bg-amber-500 text-white px-4 py-2 text-center text-sm font-medium flex items-center justify-center gap-2">
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18.364 5.636a9 9 0 010 12.728m0 0l-2.829-2.829m2.829 2.829L21 21M15.536 8.464a5 5 0 010 7.072m0 0l-2.829-2.829m-4.243 2.829a4.978 4.978 0 01-1.414-2.83m-1.414 5.658a9 9 0 01-2.167-9.238m7.824 2.167a1 1 0 111.414 1.414m-1.414-1.414L3 3" />
+          </svg>
+          Mode hors-ligne - Les modifications seront synchronisees automatiquement
+        </div>
+      )}
+      {pwa.hasUpdate && (
+        <div className="fixed top-0 left-0 right-0 z-50 bg-emerald-500 text-white px-4 py-2 text-center text-sm font-medium flex items-center justify-center gap-3">
+          <span>Une nouvelle version est disponible!</span>
+          <button
+            onClick={pwa.update}
+            className="px-3 py-1 bg-white text-emerald-600 rounded-lg text-xs font-bold hover:bg-emerald-50 transition-colors"
+          >
+            Mettre a jour
+          </button>
+        </div>
+      )}
+      {pwa.isInstallable && !pwa.isInstalled && (
+        <div className="fixed bottom-4 right-4 z-50 bg-white dark:bg-slate-800 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-700 p-4 max-w-xs animate-slide-up">
+          <div className="flex items-start gap-3">
+            <div className="w-12 h-12 bg-gradient-to-br from-emerald-500 to-teal-600 rounded-xl flex items-center justify-center flex-shrink-0">
+              <Download className="w-6 h-6 text-white" />
+            </div>
+            <div className="flex-1">
+              <h3 className="font-semibold text-slate-800 dark:text-slate-100">Installer CCOUSA</h3>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">Acces rapide depuis votre ecran d'accueil</p>
+              <div className="flex gap-2 mt-3">
+                <button
+                  onClick={pwa.install}
+                  className="flex-1 px-3 py-1.5 bg-emerald-500 text-white rounded-lg text-xs font-semibold hover:bg-emerald-600 transition-colors"
+                >
+                  Installer
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Floating Action Buttons */}
+      <div className="fixed bottom-4 left-4 z-40 flex flex-col gap-2" data-tour="shortcuts">
+        {/* Keyboard Shortcuts Button */}
+        <button
+          onClick={() => setShowShortcutsModal(true)}
+          className="w-10 h-10 bg-white dark:bg-slate-800 rounded-xl shadow-lg border border-slate-200 dark:border-slate-700 flex items-center justify-center hover:bg-slate-50 dark:hover:bg-slate-700 transition-all hover:scale-105 group"
+          title="Raccourcis clavier (?)"
+        >
+          <Keyboard className="w-5 h-5 text-slate-500 dark:text-slate-400 group-hover:text-emerald-600 dark:group-hover:text-emerald-400" />
+        </button>
+
+        {/* Theme Selector Button */}
+        <button
+          onClick={() => setShowThemeModal(true)}
+          className="w-10 h-10 bg-white dark:bg-slate-800 rounded-xl shadow-lg border border-slate-200 dark:border-slate-700 flex items-center justify-center hover:bg-slate-50 dark:hover:bg-slate-700 transition-all hover:scale-105 group"
+          title="Changer le thème"
+        >
+          <Palette className="w-5 h-5 text-slate-500 dark:text-slate-400 group-hover:text-violet-600 dark:group-hover:text-violet-400" />
+        </button>
+
+        {/* Restart Tour Button */}
+        {onboarding.hasCompleted && (
+          <button
+            onClick={onboarding.startTour}
+            className="w-10 h-10 bg-white dark:bg-slate-800 rounded-xl shadow-lg border border-slate-200 dark:border-slate-700 flex items-center justify-center hover:bg-slate-50 dark:hover:bg-slate-700 transition-all hover:scale-105 group"
+            title="Relancer le tutoriel"
+          >
+            <HelpCircle className="w-5 h-5 text-slate-500 dark:text-slate-400 group-hover:text-emerald-600 dark:group-hover:text-emerald-400" />
+          </button>
+        )}
+      </div>
+
+      <div data-tour="sidebar">
+        <Sidebar
         activeItem={currentPage}
         onItemClick={setCurrentPage}
         isCollapsed={sidebarCollapsed}
@@ -18765,6 +22225,7 @@ function App() {
         isMobileOpen={mobileMenuOpen}
         onMobileClose={() => setMobileMenuOpen(false)}
       />
+      </div>
       <div className={`transition-all duration-300 ${sidebarCollapsed ? 'lg:ml-16' : 'lg:ml-[270px]'}`}>
         <Header
           onMenuToggle={() => setMobileMenuOpen(true)}
@@ -18783,7 +22244,7 @@ function App() {
             dismissToast: realTimeNotifs.dismissToast
           }}
         />
-        <main className="p-4 lg:p-8">
+        <main className="p-4 lg:p-8" data-tour="dashboard">
           {currentPage === 'dashboard' && <Dashboard userSession={userSession} onNavigate={setCurrentPage} />}
           {currentPage === 'my-profile' && <MyProfilePage userSession={userSession} onUpdateSession={setUserSession} />}
           {currentPage === 'users-management' && <UsersManagementPage />}
@@ -18805,7 +22266,9 @@ function App() {
           {currentPage === 'events-processed' && <EventsPage initialStatus="RESOLVED" />}
           {currentPage === 'events-scheduled' && <EventsPage initialStatus="CONFIRMED" />}
           {currentPage === 'events-map' && <EventsMapPage />}
-          {!['dashboard', 'my-profile', 'users-management', 'users-groups', 'users-rights', 'settings-forms', 'settings-procedures', 'settings-categories', 'settings-doctypes', 'settings-origins', 'knowledge', 'config-schedule', 'config-system', 'analytics', 'reports', 'notifications', 'events-inprogress', 'events-received', 'events-processed', 'events-scheduled', 'events-map'].includes(currentPage) && (
+          {currentPage === 'events-calendar' && <EventsCalendarPage />}
+          {currentPage === 'events-kanban' && <EventsKanbanPage />}
+          {!['dashboard', 'my-profile', 'users-management', 'users-groups', 'users-rights', 'settings-forms', 'settings-procedures', 'settings-categories', 'settings-doctypes', 'settings-origins', 'knowledge', 'config-schedule', 'config-system', 'analytics', 'reports', 'notifications', 'events-inprogress', 'events-received', 'events-processed', 'events-scheduled', 'events-map', 'events-calendar', 'events-kanban'].includes(currentPage) && (
             <PlaceholderPage title={pageTitles[currentPage] || currentPage} />
           )}
         </main>
