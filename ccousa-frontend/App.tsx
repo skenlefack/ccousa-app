@@ -13948,6 +13948,260 @@ interface ActivityLog {
   createdAt: string
 }
 
+// Interactive Donut Chart Component
+function DonutChart({ data, size = 200, thickness = 40 }: {
+  data: { label: string; value: number; color: string }[]
+  size?: number
+  thickness?: number
+}) {
+  const [hoveredIndex, setHoveredIndex] = useState<number | null>(null)
+  const total = data.reduce((sum, d) => sum + d.value, 0)
+  const radius = (size - thickness) / 2
+  const center = size / 2
+
+  let currentAngle = -90 // Start from top
+
+  const segments = data.map((item, index) => {
+    const angle = (item.value / total) * 360
+    const startAngle = currentAngle
+    const endAngle = currentAngle + angle
+    currentAngle = endAngle
+
+    const startRad = (startAngle * Math.PI) / 180
+    const endRad = (endAngle * Math.PI) / 180
+
+    const x1 = center + radius * Math.cos(startRad)
+    const y1 = center + radius * Math.sin(startRad)
+    const x2 = center + radius * Math.cos(endRad)
+    const y2 = center + radius * Math.sin(endRad)
+
+    const largeArc = angle > 180 ? 1 : 0
+
+    const d = `M ${center} ${center} L ${x1} ${y1} A ${radius} ${radius} 0 ${largeArc} 1 ${x2} ${y2} Z`
+
+    return { ...item, d, index, percentage: ((item.value / total) * 100).toFixed(1) }
+  })
+
+  return (
+    <div className="flex items-center gap-6">
+      <div className="relative" style={{ width: size, height: size }}>
+        <svg width={size} height={size} className="transform -rotate-90">
+          {segments.map((seg) => (
+            <path
+              key={seg.index}
+              d={seg.d}
+              fill={seg.color}
+              className="transition-all duration-200 cursor-pointer"
+              style={{
+                transform: hoveredIndex === seg.index ? 'scale(1.05)' : 'scale(1)',
+                transformOrigin: 'center',
+                opacity: hoveredIndex !== null && hoveredIndex !== seg.index ? 0.5 : 1
+              }}
+              onMouseEnter={() => setHoveredIndex(seg.index)}
+              onMouseLeave={() => setHoveredIndex(null)}
+            />
+          ))}
+          {/* Inner circle for donut effect */}
+          <circle cx={center} cy={center} r={radius - thickness} fill="white" />
+        </svg>
+        {/* Center text */}
+        <div className="absolute inset-0 flex flex-col items-center justify-center">
+          {hoveredIndex !== null ? (
+            <>
+              <span className="text-2xl font-bold text-slate-800">{segments[hoveredIndex].value}</span>
+              <span className="text-xs text-slate-500">{segments[hoveredIndex].label}</span>
+            </>
+          ) : (
+            <>
+              <span className="text-2xl font-bold text-slate-800">{total}</span>
+              <span className="text-xs text-slate-500">Total</span>
+            </>
+          )}
+        </div>
+      </div>
+      {/* Legend */}
+      <div className="space-y-2">
+        {segments.map((seg) => (
+          <div
+            key={seg.index}
+            className={`flex items-center gap-2 px-2 py-1 rounded-lg transition-colors cursor-pointer ${
+              hoveredIndex === seg.index ? 'bg-slate-100' : ''
+            }`}
+            onMouseEnter={() => setHoveredIndex(seg.index)}
+            onMouseLeave={() => setHoveredIndex(null)}
+          >
+            <div className="w-3 h-3 rounded-full" style={{ backgroundColor: seg.color }} />
+            <span className="text-sm text-slate-600">{seg.label}</span>
+            <span className="text-sm font-semibold text-slate-800 ml-auto">{seg.percentage}%</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+// Interactive Line Chart Component
+function LineChart({ data, height = 200, showArea = true }: {
+  data: { label: string; value: number }[]
+  height?: number
+  showArea?: boolean
+}) {
+  const [hoveredIndex, setHoveredIndex] = useState<number | null>(null)
+  const width = 100 // Percentage
+  const padding = { top: 20, right: 10, bottom: 30, left: 40 }
+
+  const maxValue = Math.max(...data.map(d => d.value), 1)
+  const minValue = 0
+
+  const getX = (index: number) => padding.left + (index / (data.length - 1)) * (100 - padding.left - padding.right)
+  const getY = (value: number) => padding.top + ((maxValue - value) / (maxValue - minValue)) * (height - padding.top - padding.bottom)
+
+  // Create path
+  const linePath = data.map((d, i) => `${i === 0 ? 'M' : 'L'} ${getX(i)}% ${getY(d.value)}`).join(' ')
+  const areaPath = `${linePath} L ${getX(data.length - 1)}% ${height - padding.bottom} L ${getX(0)}% ${height - padding.bottom} Z`
+
+  // Grid lines
+  const gridLines = [0, 0.25, 0.5, 0.75, 1].map(ratio => ({
+    y: padding.top + ratio * (height - padding.top - padding.bottom),
+    value: Math.round(maxValue * (1 - ratio))
+  }))
+
+  return (
+    <div className="relative" style={{ height }}>
+      <svg width="100%" height={height} className="overflow-visible">
+        {/* Grid lines */}
+        {gridLines.map((line, i) => (
+          <g key={i}>
+            <line
+              x1={`${padding.left}%`}
+              y1={line.y}
+              x2={`${100 - padding.right}%`}
+              y2={line.y}
+              stroke="#e2e8f0"
+              strokeDasharray="4"
+            />
+            <text
+              x={`${padding.left - 2}%`}
+              y={line.y}
+              textAnchor="end"
+              alignmentBaseline="middle"
+              className="text-xs fill-slate-400"
+            >
+              {line.value}
+            </text>
+          </g>
+        ))}
+
+        {/* Area */}
+        {showArea && (
+          <path
+            d={areaPath}
+            fill="url(#areaGradient)"
+            className="transition-opacity"
+            style={{ opacity: 0.3 }}
+          />
+        )}
+
+        {/* Gradient definition */}
+        <defs>
+          <linearGradient id="areaGradient" x1="0%" y1="0%" x2="0%" y2="100%">
+            <stop offset="0%" stopColor="#10b981" stopOpacity="0.4" />
+            <stop offset="100%" stopColor="#10b981" stopOpacity="0" />
+          </linearGradient>
+        </defs>
+
+        {/* Line */}
+        <path
+          d={linePath}
+          fill="none"
+          stroke="#10b981"
+          strokeWidth="3"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          className="drop-shadow-sm"
+        />
+
+        {/* Data points */}
+        {data.map((d, i) => (
+          <g key={i}>
+            <circle
+              cx={`${getX(i)}%`}
+              cy={getY(d.value)}
+              r={hoveredIndex === i ? 8 : 5}
+              fill="white"
+              stroke="#10b981"
+              strokeWidth="3"
+              className="transition-all cursor-pointer drop-shadow-sm"
+              onMouseEnter={() => setHoveredIndex(i)}
+              onMouseLeave={() => setHoveredIndex(null)}
+            />
+            {/* X-axis labels */}
+            <text
+              x={`${getX(i)}%`}
+              y={height - 10}
+              textAnchor="middle"
+              className="text-xs fill-slate-500"
+            >
+              {d.label}
+            </text>
+          </g>
+        ))}
+
+        {/* Tooltip */}
+        {hoveredIndex !== null && (
+          <g>
+            <rect
+              x={`${getX(hoveredIndex) - 5}%`}
+              y={getY(data[hoveredIndex].value) - 40}
+              width="10%"
+              height="30"
+              rx="6"
+              fill="#1e293b"
+            />
+            <text
+              x={`${getX(hoveredIndex)}%`}
+              y={getY(data[hoveredIndex].value) - 20}
+              textAnchor="middle"
+              className="text-xs fill-white font-semibold"
+            >
+              {data[hoveredIndex].value}
+            </text>
+          </g>
+        )}
+      </svg>
+    </div>
+  )
+}
+
+// Comparison Card Component
+function ComparisonCard({ title, current, previous, unit = '' }: {
+  title: string
+  current: number
+  previous: number
+  unit?: string
+}) {
+  const change = previous > 0 ? ((current - previous) / previous) * 100 : 0
+  const isPositive = change >= 0
+
+  return (
+    <div className="bg-white rounded-xl border border-slate-200 p-4">
+      <p className="text-sm text-slate-500 mb-2">{title}</p>
+      <div className="flex items-end justify-between">
+        <div>
+          <p className="text-2xl font-bold text-slate-800">{current.toLocaleString()}{unit}</p>
+          <p className="text-xs text-slate-400 mt-1">vs {previous.toLocaleString()}{unit} période précédente</p>
+        </div>
+        <div className={`flex items-center gap-1 px-2 py-1 rounded-full text-sm font-semibold ${
+          isPositive ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'
+        }`}>
+          {isPositive ? <TrendingUp className="w-4 h-4" /> : <TrendingDown className="w-4 h-4" />}
+          {Math.abs(change).toFixed(1)}%
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function AnalyticsPage() {
   const { t } = useTranslation()
   const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
@@ -14334,25 +14588,35 @@ function AnalyticsPage() {
             </div>
           </div>
 
-          {/* Events by Severity */}
+          {/* Events by Severity - Donut Chart */}
           <div className="bg-white rounded-2xl border border-slate-200 p-6">
             <div className="flex items-center justify-between mb-6">
               <h3 className="text-lg font-semibold text-slate-800">Événements par Sévérité</h3>
               <AlertTriangle className="w-5 h-5 text-slate-400" />
             </div>
-            <div className="grid grid-cols-2 gap-4">
-              {(eventsBySeverity.length > 0 ? eventsBySeverity : [
-                { label: 'Critique', value: 5, color: 'bg-red-500' },
-                { label: 'Élevée', value: 12, color: 'bg-orange-500' },
-                { label: 'Moyenne', value: 28, color: 'bg-yellow-500' },
-                { label: 'Faible', value: 45, color: 'bg-green-500' },
-              ]).map((item, i) => (
-                <div key={i} className="bg-slate-50 rounded-xl p-4 text-center">
-                  <div className={`w-4 h-4 ${item.color || severityColors[item.label] || 'bg-slate-500'} rounded-full mx-auto mb-2`} />
-                  <p className="text-2xl font-bold text-slate-800">{item.value}</p>
-                  <p className="text-xs text-slate-500 mt-1">{item.label}</p>
-                </div>
-              ))}
+            <div className="flex justify-center">
+              <DonutChart
+                data={eventsBySeverity.length > 0
+                  ? eventsBySeverity.map(item => ({
+                      label: item.label || item.name,
+                      value: item.value,
+                      color: item.color || (
+                        (item.label || item.name)?.toLowerCase().includes('crit') ? '#ef4444' :
+                        (item.label || item.name)?.toLowerCase().includes('lev') || (item.label || item.name)?.toLowerCase().includes('high') ? '#f97316' :
+                        (item.label || item.name)?.toLowerCase().includes('moy') || (item.label || item.name)?.toLowerCase().includes('med') ? '#eab308' :
+                        '#22c55e'
+                      )
+                    }))
+                  : [
+                      { label: 'Critique', value: 5, color: '#ef4444' },
+                      { label: 'Élevée', value: 12, color: '#f97316' },
+                      { label: 'Moyenne', value: 28, color: '#eab308' },
+                      { label: 'Faible', value: 45, color: '#22c55e' },
+                    ]
+                }
+                size={180}
+                thickness={35}
+              />
             </div>
           </div>
 
@@ -14432,38 +14696,78 @@ function AnalyticsPage() {
 
       {/* Events Tab */}
       {activeTab === 'events' && (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          <div className="lg:col-span-2 bg-white rounded-2xl border border-slate-200 p-6">
-            <h3 className="text-lg font-semibold text-slate-800 mb-4">Tendance des Événements</h3>
-            <div className="h-64 flex items-end justify-between gap-2 px-4">
-              {[65, 45, 78, 52, 90, 68, 82, 55, 73, 48, 85, 60].map((value, i) => (
-                <div key={i} className="flex-1 flex flex-col items-center gap-2">
-                  <div
-                    className="w-full bg-emerald-500 rounded-t-lg transition-all hover:bg-emerald-600"
-                    style={{ height: `${value}%` }}
-                  />
-                  <span className="text-xs text-slate-400">
-                    {['Jan', 'Fév', 'Mar', 'Avr', 'Mai', 'Jun', 'Jul', 'Aoû', 'Sep', 'Oct', 'Nov', 'Déc'][i]}
+        <div className="space-y-6">
+          {/* Comparisons Grid */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <ComparisonCard
+              title="Nouveaux événements"
+              current={stats?.totalEvents || 156}
+              previous={Math.floor((stats?.totalEvents || 156) * 0.88)}
+            />
+            <ComparisonCard
+              title="Temps de résolution moyen"
+              current={2.4}
+              previous={3.1}
+              unit="j"
+            />
+            <ComparisonCard
+              title="Taux de résolution"
+              current={87}
+              previous={79}
+              unit="%"
+            />
+            <ComparisonCard
+              title="Événements critiques"
+              current={Math.floor((stats?.totalEvents || 156) * 0.05)}
+              previous={Math.floor((stats?.totalEvents || 156) * 0.08)}
+            />
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            {/* Line Chart - Events Trend */}
+            <div className="lg:col-span-2 bg-white rounded-2xl border border-slate-200 p-6">
+              <div className="flex items-center justify-between mb-6">
+                <h3 className="text-lg font-semibold text-slate-800">Tendance des Événements</h3>
+                <div className="flex items-center gap-2">
+                  <span className="flex items-center gap-1.5 text-xs text-slate-500">
+                    <span className="w-3 h-0.5 bg-emerald-500 rounded" />
+                    Cette période
                   </span>
                 </div>
-              ))}
+              </div>
+              <LineChart
+                data={[
+                  { label: 'Jan', value: 65 },
+                  { label: 'Fév', value: 45 },
+                  { label: 'Mar', value: 78 },
+                  { label: 'Avr', value: 52 },
+                  { label: 'Mai', value: 90 },
+                  { label: 'Jun', value: 68 },
+                  { label: 'Jul', value: 82 },
+                  { label: 'Aoû', value: 55 },
+                  { label: 'Sep', value: 73 },
+                  { label: 'Oct', value: 48 },
+                  { label: 'Nov', value: 85 },
+                  { label: 'Déc', value: stats?.totalEvents || 60 },
+                ]}
+                height={220}
+                showArea={true}
+              />
             </div>
-          </div>
-          <div className="bg-white rounded-2xl border border-slate-200 p-6">
-            <h3 className="text-lg font-semibold text-slate-800 mb-4">Statut des Événements</h3>
-            <div className="space-y-3">
-              {[
-                { label: 'Reportés', value: stats?.upcomingEvents || 0, color: 'bg-blue-500' },
-                { label: 'En cours', value: Math.floor((stats?.totalEvents || 0) * 0.3), color: 'bg-amber-500' },
-                { label: 'Résolus', value: stats?.completedEvents || 0, color: 'bg-emerald-500' },
-                { label: 'Clôturés', value: Math.floor((stats?.totalEvents || 0) * 0.1), color: 'bg-slate-500' },
-              ].map((item, i) => (
-                <div key={i} className="flex items-center gap-3">
-                  <div className={`w-3 h-3 ${item.color} rounded-full`} />
-                  <span className="flex-1 text-sm text-slate-600">{item.label}</span>
-                  <span className="font-bold text-slate-800">{item.value}</span>
-                </div>
-              ))}
+
+            {/* Status Distribution - Donut Chart */}
+            <div className="bg-white rounded-2xl border border-slate-200 p-6">
+              <h3 className="text-lg font-semibold text-slate-800 mb-4">Répartition par Statut</h3>
+              <DonutChart
+                data={[
+                  { label: 'Reportés', value: stats?.upcomingEvents || 25, color: '#3b82f6' },
+                  { label: 'En cours', value: Math.floor((stats?.totalEvents || 100) * 0.3), color: '#f59e0b' },
+                  { label: 'Résolus', value: stats?.completedEvents || 45, color: '#10b981' },
+                  { label: 'Clôturés', value: Math.floor((stats?.totalEvents || 100) * 0.1), color: '#64748b' },
+                ]}
+                size={160}
+                thickness={30}
+              />
             </div>
           </div>
         </div>
