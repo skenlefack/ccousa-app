@@ -15156,6 +15156,14 @@ function EventsPage({ initialStatus = 'INVESTIGATING' }: { initialStatus?: strin
   const [selectedEventIds, setSelectedEventIds] = useState<string[]>([])
   const [bulkActionLoading, setBulkActionLoading] = useState(false)
 
+  // Advanced filter state
+  const [showFilters, setShowFilters] = useState(false)
+  const [filterSearch, setFilterSearch] = useState('')
+  const [filterSeverity, setFilterSeverity] = useState<string>('')
+  const [filterDateFrom, setFilterDateFrom] = useState('')
+  const [filterDateTo, setFilterDateTo] = useState('')
+  const [filterAssignedTo, setFilterAssignedTo] = useState<string>('')
+
   // Comments state
   const [comments, setComments] = useState<{ id: string; content: string; authorId: string; author?: { firstName: string; lastName: string }; createdAt: string; updatedAt?: string }[]>([])
   const [newComment, setNewComment] = useState('')
@@ -15851,6 +15859,65 @@ function EventsPage({ initialStatus = 'INVESTIGATING' }: { initialStatus?: strin
     if (!stats) return 0
     return stats.byStatus[status as keyof typeof stats.byStatus] || 0
   }
+
+  // Filter events based on advanced filters
+  const filteredEvents = useMemo(() => {
+    return events.filter(event => {
+      // Search filter
+      if (filterSearch) {
+        const search = filterSearch.toLowerCase()
+        const matchesSearch =
+          event.title?.toLowerCase().includes(search) ||
+          event.code?.toLowerCase().includes(search) ||
+          event.location?.toLowerCase().includes(search) ||
+          event.description?.toLowerCase().includes(search)
+        if (!matchesSearch) return false
+      }
+
+      // Severity filter
+      if (filterSeverity && event.severity !== filterSeverity) {
+        return false
+      }
+
+      // Date from filter
+      if (filterDateFrom) {
+        const eventDate = new Date(event.createdAt)
+        const fromDate = new Date(filterDateFrom)
+        if (eventDate < fromDate) return false
+      }
+
+      // Date to filter
+      if (filterDateTo) {
+        const eventDate = new Date(event.createdAt)
+        const toDate = new Date(filterDateTo)
+        toDate.setHours(23, 59, 59, 999)
+        if (eventDate > toDate) return false
+      }
+
+      // Assigned to filter
+      if (filterAssignedTo) {
+        if (filterAssignedTo === 'unassigned') {
+          if (event.assignedToId) return false
+        } else if (event.assignedToId !== filterAssignedTo) {
+          return false
+        }
+      }
+
+      return true
+    })
+  }, [events, filterSearch, filterSeverity, filterDateFrom, filterDateTo, filterAssignedTo])
+
+  // Clear all filters
+  const clearFilters = () => {
+    setFilterSearch('')
+    setFilterSeverity('')
+    setFilterDateFrom('')
+    setFilterDateTo('')
+    setFilterAssignedTo('')
+  }
+
+  // Check if any filter is active
+  const hasActiveFilters = filterSearch || filterSeverity || filterDateFrom || filterDateTo || filterAssignedTo
 
   // Loading state
   if (loading) {
@@ -16987,19 +17054,154 @@ function EventsPage({ initialStatus = 'INVESTIGATING' }: { initialStatus?: strin
           </div>
         )}
 
+        {/* Advanced Filters Panel */}
+        <div className="mb-6 bg-white rounded-2xl border border-slate-200 overflow-hidden">
+          {/* Filter Toggle Button */}
+          <button
+            onClick={() => setShowFilters(!showFilters)}
+            className="w-full flex items-center justify-between p-4 hover:bg-slate-50 transition-colors"
+          >
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-slate-100 rounded-lg">
+                <Filter className="w-4 h-4 text-slate-600" />
+              </div>
+              <div className="text-left">
+                <span className="font-medium text-slate-800">Filtres avancés</span>
+                {hasActiveFilters && (
+                  <span className="ml-2 px-2 py-0.5 bg-emerald-100 text-emerald-700 text-xs rounded-full font-medium">
+                    Actifs
+                  </span>
+                )}
+              </div>
+            </div>
+            <ChevronDown className={`w-5 h-5 text-slate-400 transition-transform ${showFilters ? 'rotate-180' : ''}`} />
+          </button>
+
+          {/* Filter Content */}
+          {showFilters && (
+            <div className="p-4 border-t border-slate-100 bg-slate-50/50">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 xl:grid-cols-6 gap-4">
+                {/* Search */}
+                <div className="lg:col-span-2">
+                  <label className="block text-xs font-medium text-slate-500 mb-1.5">Rechercher</label>
+                  <div className="relative">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                    <input
+                      type="text"
+                      value={filterSearch}
+                      onChange={(e) => setFilterSearch(e.target.value)}
+                      placeholder="Titre, code, lieu..."
+                      className="w-full pl-10 pr-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none"
+                    />
+                    {filterSearch && (
+                      <button
+                        onClick={() => setFilterSearch('')}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {/* Severity */}
+                <div>
+                  <label className="block text-xs font-medium text-slate-500 mb-1.5">Sévérité</label>
+                  <select
+                    value={filterSeverity}
+                    onChange={(e) => setFilterSeverity(e.target.value)}
+                    className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none"
+                  >
+                    <option value="">Toutes</option>
+                    {Object.entries(SEVERITY_CONFIG).map(([key, config]) => (
+                      <option key={key} value={key}>{config.label}</option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Date From */}
+                <div>
+                  <label className="block text-xs font-medium text-slate-500 mb-1.5">Date début</label>
+                  <input
+                    type="date"
+                    value={filterDateFrom}
+                    onChange={(e) => setFilterDateFrom(e.target.value)}
+                    className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none"
+                  />
+                </div>
+
+                {/* Date To */}
+                <div>
+                  <label className="block text-xs font-medium text-slate-500 mb-1.5">Date fin</label>
+                  <input
+                    type="date"
+                    value={filterDateTo}
+                    onChange={(e) => setFilterDateTo(e.target.value)}
+                    className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none"
+                  />
+                </div>
+
+                {/* Assigned To */}
+                <div>
+                  <label className="block text-xs font-medium text-slate-500 mb-1.5">Assigné à</label>
+                  <select
+                    value={filterAssignedTo}
+                    onChange={(e) => setFilterAssignedTo(e.target.value)}
+                    className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none"
+                  >
+                    <option value="">Tous</option>
+                    <option value="unassigned">Non assigné</option>
+                    {users.slice(0, 20).map(user => (
+                      <option key={user.id} value={user.id}>
+                        {user.firstName} {user.lastName}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              {/* Filter Actions */}
+              <div className="flex items-center justify-between mt-4 pt-4 border-t border-slate-200">
+                <div className="text-sm text-slate-500">
+                  {filteredEvents.length} événement(s) sur {events.length}
+                </div>
+                {hasActiveFilters && (
+                  <button
+                    onClick={clearFilters}
+                    className="flex items-center gap-2 px-4 py-2 text-sm text-slate-600 hover:bg-slate-200 rounded-lg transition-colors"
+                  >
+                    <RotateCcw className="w-4 h-4" />
+                    Réinitialiser les filtres
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+
         {/* Events Grid */}
         {loadingEvents ? (
           <div className="flex items-center justify-center py-20">
             <RefreshCw className="w-6 h-6 text-emerald-500 animate-spin" />
           </div>
-        ) : events.length === 0 ? (
+        ) : filteredEvents.length === 0 ? (
           <div className="text-center py-20 bg-slate-50 rounded-2xl">
             <Inbox className="w-12 h-12 text-slate-300 mx-auto mb-4" />
-            <p className="text-slate-500">Aucun événement dans cette catégorie</p>
+            <p className="text-slate-500">
+              {hasActiveFilters ? 'Aucun événement ne correspond aux filtres' : 'Aucun événement dans cette catégorie'}
+            </p>
+            {hasActiveFilters && (
+              <button
+                onClick={clearFilters}
+                className="mt-3 px-4 py-2 text-sm text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors"
+              >
+                Réinitialiser les filtres
+              </button>
+            )}
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {events.map(event => {
+            {filteredEvents.map(event => {
               const severityConfig = SEVERITY_CONFIG[event.severity]
               const isSelected = selectedEventIds.includes(event.id)
               return (
