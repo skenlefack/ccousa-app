@@ -29,8 +29,27 @@ import {
   Database, Lock as LockIcon, Unlock, Key, Fingerprint,
   ScanLine, QrCode, Barcode, Tag, Tags, Bookmark, Flag, Award, Trophy, Moon, Sun,
   Target, Crosshair, Lightbulb, HelpCircle, AlertCircle,
-  Inbox, Send, RotateCcw, CheckCircle
+  Inbox, Send, RotateCcw, CheckCircle, FileDown
 } from 'lucide-react'
+import jsPDF from 'jspdf'
+import 'jspdf-autotable'
+
+// Type declaration for jspdf-autotable
+declare module 'jspdf' {
+  interface jsPDF {
+    autoTable: (options: {
+      head?: string[][]
+      body?: string[][]
+      startY?: number
+      theme?: string
+      headStyles?: Record<string, unknown>
+      styles?: Record<string, unknown>
+      columnStyles?: Record<string, unknown>
+      margin?: { left?: number; right?: number }
+    }) => jsPDF
+    lastAutoTable?: { finalY: number }
+  }
+}
 
 /* ============================================
    USER SESSION INTERFACE
@@ -15919,6 +15938,198 @@ function EventsPage({ initialStatus = 'INVESTIGATING' }: { initialStatus?: strin
   // Check if any filter is active
   const hasActiveFilters = filterSearch || filterSeverity || filterDateFrom || filterDateTo || filterAssignedTo
 
+  // Export event to PDF
+  const exportEventToPDF = (event: EventData) => {
+    const doc = new jsPDF()
+    const pageWidth = doc.internal.pageSize.getWidth()
+    const margin = 20
+    let yPosition = 20
+
+    // Header with gradient-like effect
+    doc.setFillColor(16, 185, 129) // Emerald
+    doc.rect(0, 0, pageWidth, 45, 'F')
+
+    // Logo/Title
+    doc.setTextColor(255, 255, 255)
+    doc.setFontSize(22)
+    doc.setFont('helvetica', 'bold')
+    doc.text('CCOUSA-APP', margin, 25)
+    doc.setFontSize(10)
+    doc.setFont('helvetica', 'normal')
+    doc.text('Plateforme de Gestion des Événements de Santé Animale', margin, 35)
+
+    // Event code in header
+    doc.setFontSize(14)
+    doc.setFont('helvetica', 'bold')
+    doc.text(event.code, pageWidth - margin, 30, { align: 'right' })
+
+    yPosition = 60
+
+    // Event title
+    doc.setTextColor(30, 41, 59) // Slate 800
+    doc.setFontSize(18)
+    doc.setFont('helvetica', 'bold')
+    const titleLines = doc.splitTextToSize(event.title, pageWidth - 2 * margin)
+    doc.text(titleLines, margin, yPosition)
+    yPosition += titleLines.length * 8 + 10
+
+    // Status and Severity badges
+    const statusConfig = STATUS_CONFIG[event.status]
+    const severityConfig = SEVERITY_CONFIG[event.severity]
+
+    doc.setFontSize(10)
+    doc.setFont('helvetica', 'normal')
+
+    // Status badge
+    doc.setFillColor(219, 234, 254) // Light blue
+    doc.roundedRect(margin, yPosition - 5, 60, 14, 3, 3, 'F')
+    doc.setTextColor(29, 78, 216) // Blue 700
+    doc.text(`Statut: ${statusConfig.label}`, margin + 5, yPosition + 4)
+
+    // Severity badge
+    doc.setFillColor(254, 243, 199) // Light amber
+    doc.roundedRect(margin + 70, yPosition - 5, 70, 14, 3, 3, 'F')
+    doc.setTextColor(180, 83, 9) // Amber 700
+    doc.text(`Priorité: ${severityConfig.label}`, margin + 75, yPosition + 4)
+
+    yPosition += 25
+
+    // Separator line
+    doc.setDrawColor(226, 232, 240)
+    doc.setLineWidth(0.5)
+    doc.line(margin, yPosition, pageWidth - margin, yPosition)
+    yPosition += 15
+
+    // Event details section
+    doc.setTextColor(30, 41, 59)
+    doc.setFontSize(14)
+    doc.setFont('helvetica', 'bold')
+    doc.text('Informations générales', margin, yPosition)
+    yPosition += 12
+
+    // Details table
+    const detailsData = [
+      ['Localisation', event.location || 'Non spécifiée'],
+      ['Catégorie', event.category?.name || 'Non spécifiée'],
+      ['Signalé par', event.reportedBy ? `${event.reportedBy.firstName} ${event.reportedBy.lastName}` : 'Non spécifié'],
+      ['Date de signalement', new Date(event.reportedAt).toLocaleDateString('fr-FR', { dateStyle: 'long' })],
+      ['Assigné à', event.assignedTo ? `${event.assignedTo.firstName} ${event.assignedTo.lastName}` : 'Non assigné'],
+    ]
+
+    doc.autoTable({
+      body: detailsData,
+      startY: yPosition,
+      theme: 'plain',
+      styles: { fontSize: 10, cellPadding: 4 },
+      columnStyles: {
+        0: { fontStyle: 'bold', cellWidth: 50, textColor: [100, 116, 139] },
+        1: { cellWidth: 'auto', textColor: [30, 41, 59] }
+      },
+      margin: { left: margin, right: margin }
+    })
+
+    yPosition = (doc.lastAutoTable?.finalY || yPosition) + 15
+
+    // Description section
+    if (event.description) {
+      doc.setFontSize(14)
+      doc.setFont('helvetica', 'bold')
+      doc.setTextColor(30, 41, 59)
+      doc.text('Description', margin, yPosition)
+      yPosition += 10
+
+      doc.setFontSize(10)
+      doc.setFont('helvetica', 'normal')
+      doc.setTextColor(71, 85, 105)
+      const descLines = doc.splitTextToSize(event.description, pageWidth - 2 * margin)
+      doc.text(descLines, margin, yPosition)
+      yPosition += descLines.length * 5 + 15
+    }
+
+    // Timeline section if available
+    if (timeline.length > 0) {
+      // Check if we need a new page
+      if (yPosition > 220) {
+        doc.addPage()
+        yPosition = 20
+      }
+
+      doc.setFontSize(14)
+      doc.setFont('helvetica', 'bold')
+      doc.setTextColor(30, 41, 59)
+      doc.text('Historique des actions', margin, yPosition)
+      yPosition += 10
+
+      const timelineData = timeline.slice(0, 10).map(item => [
+        new Date(item.createdAt).toLocaleDateString('fr-FR'),
+        item.action,
+        item.description,
+        item.user ? `${item.user.firstName} ${item.user.lastName}` : 'Système'
+      ])
+
+      doc.autoTable({
+        head: [['Date', 'Action', 'Description', 'Utilisateur']],
+        body: timelineData,
+        startY: yPosition,
+        theme: 'striped',
+        headStyles: { fillColor: [16, 185, 129], textColor: 255, fontSize: 9 },
+        styles: { fontSize: 8, cellPadding: 3 },
+        margin: { left: margin, right: margin }
+      })
+
+      yPosition = (doc.lastAutoTable?.finalY || yPosition) + 15
+    }
+
+    // Comments section if available
+    if (comments.length > 0) {
+      // Check if we need a new page
+      if (yPosition > 220) {
+        doc.addPage()
+        yPosition = 20
+      }
+
+      doc.setFontSize(14)
+      doc.setFont('helvetica', 'bold')
+      doc.setTextColor(30, 41, 59)
+      doc.text('Commentaires', margin, yPosition)
+      yPosition += 10
+
+      const commentsData = comments.slice(0, 10).map(comment => [
+        new Date(comment.createdAt).toLocaleDateString('fr-FR'),
+        comment.author ? `${comment.author.firstName} ${comment.author.lastName}` : 'Anonyme',
+        comment.content
+      ])
+
+      doc.autoTable({
+        head: [['Date', 'Auteur', 'Commentaire']],
+        body: commentsData,
+        startY: yPosition,
+        theme: 'striped',
+        headStyles: { fillColor: [16, 185, 129], textColor: 255, fontSize: 9 },
+        styles: { fontSize: 8, cellPadding: 3 },
+        columnStyles: { 2: { cellWidth: 'auto' } },
+        margin: { left: margin, right: margin }
+      })
+    }
+
+    // Footer on all pages
+    const pageCount = doc.getNumberOfPages()
+    for (let i = 1; i <= pageCount; i++) {
+      doc.setPage(i)
+      doc.setFontSize(8)
+      doc.setTextColor(148, 163, 184)
+      doc.text(
+        `Généré le ${new Date().toLocaleDateString('fr-FR')} à ${new Date().toLocaleTimeString('fr-FR')} - Page ${i}/${pageCount}`,
+        pageWidth / 2,
+        doc.internal.pageSize.getHeight() - 10,
+        { align: 'center' }
+      )
+    }
+
+    // Download
+    doc.save(`evenement-${event.code}.pdf`)
+  }
+
   // Loading state
   if (loading) {
     return (
@@ -16368,6 +16579,15 @@ function EventsPage({ initialStatus = 'INVESTIGATING' }: { initialStatus?: strin
                 </button>
               </>
             )}
+            {/* Export PDF Button */}
+            <button
+              onClick={() => exportEventToPDF(selectedEvent)}
+              className="flex items-center gap-2 px-4 py-2.5 bg-slate-100 text-slate-700 rounded-xl hover:bg-slate-200 transition-colors"
+              title="Exporter en PDF"
+            >
+              <FileDown className="w-4 h-4" />
+              Exporter PDF
+            </button>
           </div>
         </div>
 
