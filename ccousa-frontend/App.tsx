@@ -33,6 +33,7 @@ import {
 } from 'lucide-react'
 import jsPDF from 'jspdf'
 import 'jspdf-autotable'
+import * as XLSX from 'xlsx'
 
 // Type declaration for jspdf-autotable
 declare module 'jspdf' {
@@ -15183,6 +15184,14 @@ function EventsPage({ initialStatus = 'INVESTIGATING' }: { initialStatus?: strin
   const [filterDateTo, setFilterDateTo] = useState('')
   const [filterAssignedTo, setFilterAssignedTo] = useState<string>('')
 
+  // Import state
+  const [showImportModal, setShowImportModal] = useState(false)
+  const [importData, setImportData] = useState<Record<string, string>[]>([])
+  const [importErrors, setImportErrors] = useState<{ row: number; field: string; message: string }[]>([])
+  const [importStep, setImportStep] = useState<'upload' | 'preview' | 'importing' | 'done'>('upload')
+  const [importProgress, setImportProgress] = useState(0)
+  const [importResults, setImportResults] = useState<{ success: number; failed: number; errors: string[] }>({ success: 0, failed: 0, errors: [] })
+
   // Comments state
   const [comments, setComments] = useState<{ id: string; content: string; authorId: string; author?: { firstName: string; lastName: string }; createdAt: string; updatedAt?: string }[]>([])
   const [newComment, setNewComment] = useState('')
@@ -16128,6 +16137,145 @@ function EventsPage({ initialStatus = 'INVESTIGATING' }: { initialStatus?: strin
 
     // Download
     doc.save(`evenement-${event.code}.pdf`)
+  }
+
+  // Handle file upload for import
+  const handleImportFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    const reader = new FileReader()
+    reader.onload = (event) => {
+      try {
+        const data = event.target?.result
+        const workbook = XLSX.read(data, { type: 'binary' })
+        const sheetName = workbook.SheetNames[0]
+        const worksheet = workbook.Sheets[sheetName]
+        const jsonData = XLSX.utils.sheet_to_json<Record<string, string>>(worksheet)
+
+        // Validate and transform data
+        const errors: { row: number; field: string; message: string }[] = []
+        const validData = jsonData.map((row, index) => {
+          const rowNum = index + 2 // Excel row number (1-indexed + header)
+
+          // Required fields validation
+          if (!row['Titre'] && !row['title']) {
+            errors.push({ row: rowNum, field: 'Titre', message: 'Le titre est obligatoire' })
+          }
+          if (!row['Localisation'] && !row['location']) {
+            errors.push({ row: rowNum, field: 'Localisation', message: 'La localisation est obligatoire' })
+          }
+
+          // Map French column names to API fields
+          return {
+            title: row['Titre'] || row['title'] || '',
+            description: row['Description'] || row['description'] || '',
+            location: row['Localisation'] || row['location'] || '',
+            severity: mapSeverity(row['Priorité'] || row['severity'] || 'MEDIUM'),
+            categoryName: row['Catégorie'] || row['category'] || '',
+            initiatorName: row['Initiateur'] || row['initiator'] || '',
+            initiatorContact: row['Contact'] || row['contact'] || '',
+          }
+        })
+
+        setImportData(validData)
+        setImportErrors(errors)
+        setImportStep('preview')
+      } catch (error) {
+        console.error('Error parsing file:', error)
+        alert('Erreur lors de la lecture du fichier. Vérifiez le format.')
+      }
+    }
+    reader.readAsBinaryString(file)
+  }
+
+  // Map severity from various formats
+  const mapSeverity = (value: string): string => {
+    const upper = value.toUpperCase()
+    if (upper.includes('CRIT') || upper.includes('URGENT')) return 'CRITICAL'
+    if (upper.includes('HIGH') || upper.includes('ÉLEV') || upper.includes('HAUTE')) return 'HIGH'
+    if (upper.includes('LOW') || upper.includes('FAIBLE') || upper.includes('BASSE')) return 'LOW'
+    return 'MEDIUM'
+  }
+
+  // Execute import
+  const executeImport = async () => {
+    setImportStep('importing')
+    setImportProgress(0)
+
+    const results = { success: 0, failed: 0, errors: [] as string[] }
+    const total = importData.length
+
+    for (let i = 0; i < importData.length; i++) {
+      const row = importData[i]
+
+      // Find category by name
+      const category = categories.find(c =>
+        c.name.toLowerCase() === (row.categoryName as string || '').toLowerCase()
+      )
+
+      try {
+        const payload = {
+          title: row.title,
+          description: row.description || null,
+          location: row.location,
+          severity: row.severity,
+          categoryId: category?.id || categories[0]?.id,
+        }
+
+        const response = await fetch(`${API_URL}/api/events`, {
+          method: 'POST',
+          headers: getHeaders(),
+          body: JSON.stringify(payload)
+        })
+
+        if (response.ok) {
+          results.success++
+        } else {
+          results.failed++
+          const errorData = await response.json()
+          results.errors.push(`Ligne ${i + 2}: ${errorData.message || 'Erreur inconnue'}`)
+        }
+      } catch (error) {
+        results.failed++
+        results.errors.push(`Ligne ${i + 2}: Erreur réseau`)
+      }
+
+      setImportProgress(Math.round(((i + 1) / total) * 100))
+    }
+
+    setImportResults(results)
+    setImportStep('done')
+    loadInitialData()
+  }
+
+  // Reset import
+  const resetImport = () => {
+    setShowImportModal(false)
+    setImportData([])
+    setImportErrors([])
+    setImportStep('upload')
+    setImportProgress(0)
+    setImportResults({ success: 0, failed: 0, errors: [] })
+  }
+
+  // Download import template
+  const downloadTemplate = () => {
+    const template = [
+      {
+        'Titre': 'Exemple: Suspicion de maladie aviaire',
+        'Description': 'Description détaillée de l\'événement',
+        'Localisation': 'Yaoundé, Centre',
+        'Priorité': 'HIGH',
+        'Catégorie': categories[0]?.name || 'Maladie animale',
+        'Initiateur': 'Jean Dupont',
+        'Contact': '+237 6XX XXX XXX'
+      }
+    ]
+    const ws = XLSX.utils.json_to_sheet(template)
+    const wb = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(wb, ws, 'Template')
+    XLSX.writeFile(wb, 'template-import-evenements.xlsx')
   }
 
   // Loading state
@@ -17489,19 +17637,257 @@ function EventsPage({ initialStatus = 'INVESTIGATING' }: { initialStatus?: strin
 
   return (
     <div className="p-6">
+      {/* Import Modal */}
+      {showImportModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-2xl w-full max-w-3xl mx-4 max-h-[90vh] overflow-hidden flex flex-col">
+            {/* Modal Header */}
+            <div className="flex items-center justify-between p-6 border-b border-slate-200">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-emerald-100 rounded-xl flex items-center justify-center">
+                  <Upload className="w-5 h-5 text-emerald-600" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-semibold text-slate-800">Importer des événements</h3>
+                  <p className="text-sm text-slate-500">Importez des événements depuis un fichier Excel ou CSV</p>
+                </div>
+              </div>
+              <button
+                onClick={resetImport}
+                className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Modal Content */}
+            <div className="flex-1 overflow-y-auto p-6">
+              {importStep === 'upload' && (
+                <div className="space-y-6">
+                  {/* Upload Zone */}
+                  <div className="border-2 border-dashed border-slate-300 rounded-2xl p-10 text-center hover:border-emerald-400 transition-colors">
+                    <input
+                      type="file"
+                      accept=".xlsx,.xls,.csv"
+                      onChange={handleImportFile}
+                      className="hidden"
+                      id="import-file"
+                    />
+                    <label htmlFor="import-file" className="cursor-pointer">
+                      <Upload className="w-12 h-12 text-slate-400 mx-auto mb-4" />
+                      <p className="text-lg font-medium text-slate-700 mb-2">
+                        Glissez un fichier ici ou cliquez pour sélectionner
+                      </p>
+                      <p className="text-sm text-slate-500">
+                        Formats acceptés: Excel (.xlsx, .xls), CSV
+                      </p>
+                    </label>
+                  </div>
+
+                  {/* Template Download */}
+                  <div className="bg-slate-50 rounded-xl p-4">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="font-medium text-slate-700">Télécharger le modèle</p>
+                        <p className="text-sm text-slate-500">Utilisez ce modèle pour formater vos données</p>
+                      </div>
+                      <button
+                        onClick={downloadTemplate}
+                        className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 rounded-lg hover:bg-slate-100 transition-colors text-sm"
+                      >
+                        <Download className="w-4 h-4" />
+                        Télécharger
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Instructions */}
+                  <div className="bg-blue-50 rounded-xl p-4">
+                    <h4 className="font-medium text-blue-800 mb-2">Colonnes attendues:</h4>
+                    <ul className="text-sm text-blue-700 space-y-1">
+                      <li><strong>Titre</strong> (obligatoire): Titre de l'événement</li>
+                      <li><strong>Localisation</strong> (obligatoire): Lieu de l'événement</li>
+                      <li><strong>Description</strong>: Description détaillée</li>
+                      <li><strong>Priorité</strong>: LOW, MEDIUM, HIGH, CRITICAL</li>
+                      <li><strong>Catégorie</strong>: Nom de la catégorie</li>
+                      <li><strong>Initiateur</strong>: Nom de l'initiateur</li>
+                      <li><strong>Contact</strong>: Contact de l'initiateur</li>
+                    </ul>
+                  </div>
+                </div>
+              )}
+
+              {importStep === 'preview' && (
+                <div className="space-y-6">
+                  {/* Summary */}
+                  <div className="flex items-center gap-4">
+                    <div className="flex-1 bg-emerald-50 rounded-xl p-4 text-center">
+                      <p className="text-3xl font-bold text-emerald-600">{importData.length}</p>
+                      <p className="text-sm text-emerald-700">Événements à importer</p>
+                    </div>
+                    {importErrors.length > 0 && (
+                      <div className="flex-1 bg-amber-50 rounded-xl p-4 text-center">
+                        <p className="text-3xl font-bold text-amber-600">{importErrors.length}</p>
+                        <p className="text-sm text-amber-700">Avertissements</p>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Errors */}
+                  {importErrors.length > 0 && (
+                    <div className="bg-amber-50 rounded-xl p-4">
+                      <h4 className="font-medium text-amber-800 mb-2 flex items-center gap-2">
+                        <AlertTriangle className="w-4 h-4" />
+                        Avertissements
+                      </h4>
+                      <ul className="text-sm text-amber-700 space-y-1 max-h-32 overflow-y-auto">
+                        {importErrors.map((error, i) => (
+                          <li key={i}>Ligne {error.row}: {error.field} - {error.message}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+
+                  {/* Preview Table */}
+                  <div className="border border-slate-200 rounded-xl overflow-hidden">
+                    <div className="overflow-x-auto max-h-64">
+                      <table className="w-full text-sm">
+                        <thead className="bg-slate-50 sticky top-0">
+                          <tr>
+                            <th className="px-4 py-3 text-left font-medium text-slate-600">#</th>
+                            <th className="px-4 py-3 text-left font-medium text-slate-600">Titre</th>
+                            <th className="px-4 py-3 text-left font-medium text-slate-600">Localisation</th>
+                            <th className="px-4 py-3 text-left font-medium text-slate-600">Priorité</th>
+                            <th className="px-4 py-3 text-left font-medium text-slate-600">Catégorie</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100">
+                          {importData.slice(0, 10).map((row, i) => (
+                            <tr key={i} className="hover:bg-slate-50">
+                              <td className="px-4 py-3 text-slate-500">{i + 1}</td>
+                              <td className="px-4 py-3 text-slate-800 font-medium">{row.title as string}</td>
+                              <td className="px-4 py-3 text-slate-600">{row.location as string}</td>
+                              <td className="px-4 py-3">
+                                <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
+                                  row.severity === 'CRITICAL' ? 'bg-red-100 text-red-700' :
+                                  row.severity === 'HIGH' ? 'bg-orange-100 text-orange-700' :
+                                  row.severity === 'LOW' ? 'bg-green-100 text-green-700' :
+                                  'bg-amber-100 text-amber-700'
+                                }`}>
+                                  {row.severity as string}
+                                </span>
+                              </td>
+                              <td className="px-4 py-3 text-slate-600">{row.categoryName as string || '-'}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                    {importData.length > 10 && (
+                      <div className="bg-slate-50 px-4 py-2 text-sm text-slate-500 text-center">
+                        ... et {importData.length - 10} autres
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {importStep === 'importing' && (
+                <div className="text-center py-10">
+                  <RefreshCw className="w-12 h-12 text-emerald-500 animate-spin mx-auto mb-4" />
+                  <p className="text-lg font-medium text-slate-800 mb-2">Import en cours...</p>
+                  <div className="w-full max-w-md mx-auto bg-slate-200 rounded-full h-3 mb-2">
+                    <div
+                      className="bg-emerald-500 h-3 rounded-full transition-all"
+                      style={{ width: `${importProgress}%` }}
+                    />
+                  </div>
+                  <p className="text-sm text-slate-500">{importProgress}% terminé</p>
+                </div>
+              )}
+
+              {importStep === 'done' && (
+                <div className="text-center py-10">
+                  <div className={`w-16 h-16 rounded-full mx-auto mb-4 flex items-center justify-center ${
+                    importResults.failed === 0 ? 'bg-emerald-100' : 'bg-amber-100'
+                  }`}>
+                    {importResults.failed === 0 ? (
+                      <CheckCircle className="w-8 h-8 text-emerald-600" />
+                    ) : (
+                      <AlertTriangle className="w-8 h-8 text-amber-600" />
+                    )}
+                  </div>
+                  <h4 className="text-lg font-semibold text-slate-800 mb-2">Import terminé</h4>
+                  <div className="flex items-center justify-center gap-6 mb-4">
+                    <div>
+                      <p className="text-2xl font-bold text-emerald-600">{importResults.success}</p>
+                      <p className="text-sm text-slate-500">Réussis</p>
+                    </div>
+                    {importResults.failed > 0 && (
+                      <div>
+                        <p className="text-2xl font-bold text-red-600">{importResults.failed}</p>
+                        <p className="text-sm text-slate-500">Échoués</p>
+                      </div>
+                    )}
+                  </div>
+                  {importResults.errors.length > 0 && (
+                    <div className="bg-red-50 rounded-xl p-4 text-left max-h-32 overflow-y-auto mb-4">
+                      <ul className="text-sm text-red-700 space-y-1">
+                        {importResults.errors.map((error, i) => (
+                          <li key={i}>{error}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Modal Footer */}
+            <div className="flex items-center justify-between p-6 border-t border-slate-200 bg-slate-50">
+              <button
+                onClick={importStep === 'done' ? resetImport : () => setImportStep('upload')}
+                className="px-4 py-2 text-slate-600 hover:bg-slate-200 rounded-lg transition-colors"
+                disabled={importStep === 'importing'}
+              >
+                {importStep === 'done' ? 'Fermer' : 'Retour'}
+              </button>
+              {importStep === 'preview' && (
+                <button
+                  onClick={executeImport}
+                  className="flex items-center gap-2 px-6 py-2.5 bg-emerald-500 text-white rounded-xl hover:bg-emerald-600 transition-colors"
+                >
+                  <Upload className="w-4 h-4" />
+                  Lancer l'import
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-2xl font-display font-bold text-slate-800">Événements sanitaires</h1>
           <p className="text-slate-500 mt-1">Gérez et suivez les événements de santé animale</p>
         </div>
-        <button
-          onClick={() => setCurrentView('form')}
-          className="flex items-center gap-2 px-5 py-2.5 bg-emerald-500 text-white rounded-xl hover:bg-emerald-600 transition-colors shadow-lg shadow-emerald-500/25"
-        >
-          <Plus className="w-5 h-5" />
-          Nouvel événement
-        </button>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => setShowImportModal(true)}
+            className="flex items-center gap-2 px-4 py-2.5 bg-white border border-slate-200 text-slate-700 rounded-xl hover:bg-slate-50 transition-colors"
+          >
+            <Upload className="w-4 h-4" />
+            Importer
+          </button>
+          <button
+            onClick={() => setCurrentView('form')}
+            className="flex items-center gap-2 px-5 py-2.5 bg-emerald-500 text-white rounded-xl hover:bg-emerald-600 transition-colors shadow-lg shadow-emerald-500/25"
+          >
+            <Plus className="w-5 h-5" />
+            Nouvel événement
+          </button>
+        </div>
       </div>
 
       {/* Status Tabs */}
