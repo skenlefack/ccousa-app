@@ -1565,6 +1565,58 @@ interface DashboardStats {
   highEvents?: number
 }
 
+/* ============================================
+   ANIMATED COUNTER COMPONENT
+   ============================================ */
+function AnimatedCounter({ value, duration = 1000, prefix = '', suffix = '' }: { value: number; duration?: number; prefix?: string; suffix?: string }) {
+  const [displayValue, setDisplayValue] = useState(0)
+  const previousValueRef = useRef(0)
+
+  useEffect(() => {
+    const startValue = previousValueRef.current
+    const endValue = value
+    const startTime = Date.now()
+
+    const animate = () => {
+      const now = Date.now()
+      const elapsed = now - startTime
+      const progress = Math.min(elapsed / duration, 1)
+
+      // Easing function (ease-out)
+      const easeOut = 1 - Math.pow(1 - progress, 3)
+      const currentValue = Math.floor(startValue + (endValue - startValue) * easeOut)
+
+      setDisplayValue(currentValue)
+
+      if (progress < 1) {
+        requestAnimationFrame(animate)
+      } else {
+        previousValueRef.current = endValue
+      }
+    }
+
+    requestAnimationFrame(animate)
+  }, [value, duration])
+
+  return (
+    <span className="tabular-nums">
+      {prefix}{displayValue.toLocaleString()}{suffix}
+    </span>
+  )
+}
+
+/* ============================================
+   LIVE INDICATOR COMPONENT
+   ============================================ */
+function LiveIndicator({ isLive = true }: { isLive?: boolean }) {
+  return (
+    <span className="inline-flex items-center gap-1.5 px-2 py-0.5 bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 rounded-full text-xs font-medium">
+      <span className={`w-2 h-2 rounded-full ${isLive ? 'bg-emerald-500 animate-pulse' : 'bg-slate-400'}`} />
+      {isLive ? 'LIVE' : 'OFFLINE'}
+    </span>
+  )
+}
+
 interface RecentEvent {
   id: string
   code: string
@@ -1771,7 +1823,7 @@ function Dashboard({ userSession, onNavigate }: { userSession: UserSession | nul
   const stats = dashboardStats ? [
     {
       title: t('dashboard.totalEvents'),
-      value: dashboardStats.totalEvents.toLocaleString(),
+      numericValue: dashboardStats.totalEvents,
       change: 12,
       icon: <Activity className="w-5 h-5" />,
       color: 'from-emerald-500 to-teal-600',
@@ -1780,7 +1832,7 @@ function Dashboard({ userSession, onNavigate }: { userSession: UserSession | nul
     },
     {
       title: t('dashboard.inProgress'),
-      value: dashboardStats.upcomingEvents.toLocaleString(),
+      numericValue: dashboardStats.upcomingEvents,
       change: -5,
       icon: <Clock className="w-5 h-5" />,
       color: 'from-blue-500 to-indigo-600',
@@ -1789,7 +1841,7 @@ function Dashboard({ userSession, onNavigate }: { userSession: UserSession | nul
     },
     {
       title: t('dashboard.activeAlerts'),
-      value: (dashboardStats.criticalEvents || dashboardStats.upcomingEvents).toString(),
+      numericValue: dashboardStats.criticalEvents || dashboardStats.upcomingEvents,
       change: 8,
       icon: <AlertTriangle className="w-5 h-5" />,
       color: 'from-amber-500 to-orange-600',
@@ -1798,7 +1850,7 @@ function Dashboard({ userSession, onNavigate }: { userSession: UserSession | nul
     },
     {
       title: t('dashboard.confirmedOutbreaks'),
-      value: (dashboardStats.highEvents || Math.floor(dashboardStats.totalEvents * 0.05)).toString(),
+      numericValue: dashboardStats.highEvents || Math.floor(dashboardStats.totalEvents * 0.05),
       change: -15,
       icon: <AlertTriangle className="w-5 h-5" />,
       color: 'from-rose-500 to-red-600',
@@ -1806,10 +1858,10 @@ function Dashboard({ userSession, onNavigate }: { userSession: UserSession | nul
       textColor: 'text-rose-600'
     },
   ] : [
-    { title: t('dashboard.totalEvents'), value: '-', change: 0, icon: <Activity className="w-5 h-5" />, color: 'from-emerald-500 to-teal-600', bgLight: 'bg-emerald-50', textColor: 'text-emerald-600' },
-    { title: t('dashboard.inProgress'), value: '-', change: 0, icon: <Clock className="w-5 h-5" />, color: 'from-blue-500 to-indigo-600', bgLight: 'bg-blue-50', textColor: 'text-blue-600' },
-    { title: t('dashboard.activeAlerts'), value: '-', change: 0, icon: <AlertTriangle className="w-5 h-5" />, color: 'from-amber-500 to-orange-600', bgLight: 'bg-amber-50', textColor: 'text-amber-600' },
-    { title: t('dashboard.confirmedOutbreaks'), value: '-', change: 0, icon: <AlertTriangle className="w-5 h-5" />, color: 'from-rose-500 to-red-600', bgLight: 'bg-rose-50', textColor: 'text-rose-600' },
+    { title: t('dashboard.totalEvents'), numericValue: 0, change: 0, icon: <Activity className="w-5 h-5" />, color: 'from-emerald-500 to-teal-600', bgLight: 'bg-emerald-50', textColor: 'text-emerald-600' },
+    { title: t('dashboard.inProgress'), numericValue: 0, change: 0, icon: <Clock className="w-5 h-5" />, color: 'from-blue-500 to-indigo-600', bgLight: 'bg-blue-50', textColor: 'text-blue-600' },
+    { title: t('dashboard.activeAlerts'), numericValue: 0, change: 0, icon: <AlertTriangle className="w-5 h-5" />, color: 'from-amber-500 to-orange-600', bgLight: 'bg-amber-50', textColor: 'text-amber-600' },
+    { title: t('dashboard.confirmedOutbreaks'), numericValue: 0, change: 0, icon: <AlertTriangle className="w-5 h-5" />, color: 'from-rose-500 to-red-600', bgLight: 'bg-rose-50', textColor: 'text-rose-600' },
   ]
 
   // Formater les événements pour l'affichage
@@ -1903,6 +1955,7 @@ function Dashboard({ userSession, onNavigate }: { userSession: UserSession | nul
       {/* Auto-refresh indicator and controls */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
+          {autoRefresh && <LiveIndicator isLive={true} />}
           {lastUpdated && (
             <span className="text-xs text-slate-500">
               Mis à jour: {lastUpdated.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}
@@ -2056,7 +2109,9 @@ function Dashboard({ userSession, onNavigate }: { userSession: UserSession | nul
               </span>
             </div>
             <p className="text-sm text-slate-500 mb-1 font-medium">{stat.title}</p>
-            <p className="text-3xl font-display font-bold text-slate-800">{stat.value}</p>
+            <p className="text-3xl font-display font-bold text-slate-800">
+              <AnimatedCounter value={stat.numericValue} />
+            </p>
 
             {/* Mini chart decoration */}
             <div className="absolute bottom-0 right-0 w-24 h-12 opacity-10">
