@@ -27,7 +27,7 @@ import {
   Plane, Ship, Train, Megaphone, Radio as RadioIcon,
   FileWarning, FileCheck, FolderOpen, Folder, Archive,
   Database, Lock as LockIcon, Unlock, Key, Fingerprint,
-  ScanLine, QrCode, Barcode, Tag, Tags, Bookmark, Flag, Award, Trophy,
+  ScanLine, QrCode, Barcode, Tag, Tags, Bookmark, Flag, Award, Trophy, Moon, Sun,
   Target, Crosshair, Lightbulb, HelpCircle, AlertCircle,
   Inbox, Send, RotateCcw, CheckCircle
 } from 'lucide-react'
@@ -858,7 +858,7 @@ const statusColors: Record<UserStatus, { bg: string; dot: string; ring: string }
 /* ============================================
    HEADER
    ============================================ */
-function Header({ onMenuToggle, currentPage, onLogout, onProfileClick, onNotificationsClick, onNavigate, userSession }: { onMenuToggle: () => void; currentPage: string; onLogout: () => void; onProfileClick: () => void; onNotificationsClick: () => void; onNavigate: (page: string) => void; userSession: UserSession | null }) {
+function Header({ onMenuToggle, currentPage, onLogout, onProfileClick, onNotificationsClick, onNavigate, userSession, darkMode, toggleDarkMode }: { onMenuToggle: () => void; currentPage: string; onLogout: () => void; onProfileClick: () => void; onNotificationsClick: () => void; onNavigate: (page: string) => void; userSession: UserSession | null; darkMode: boolean; toggleDarkMode: () => void }) {
   const { t } = useTranslation()
   const [userMenuOpen, setUserMenuOpen] = useState(false)
   const [userStatus, setUserStatus] = useState<UserStatus>('available')
@@ -1301,6 +1301,19 @@ function Header({ onMenuToggle, currentPage, onLogout, onProfileClick, onNotific
           >
             <Package className="w-5 h-5" />
             <span className="hidden md:inline text-sm font-semibold">{t('header.equipment')}</span>
+          </button>
+
+          {/* Dark Mode Toggle */}
+          <button
+            onClick={toggleDarkMode}
+            className="p-3 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-xl transition-colors"
+            title={darkMode ? 'Mode clair' : 'Mode sombre'}
+          >
+            {darkMode ? (
+              <Sun className="w-6 h-6 text-amber-500" />
+            ) : (
+              <Moon className="w-6 h-6 text-slate-600" />
+            )}
           </button>
 
           {/* Notifications */}
@@ -17119,6 +17132,25 @@ function App() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
 
+  // Dark mode state
+  const [darkMode, setDarkMode] = useState(() => {
+    const saved = localStorage.getItem('darkMode')
+    if (saved !== null) return JSON.parse(saved)
+    return window.matchMedia('(prefers-color-scheme: dark)').matches
+  })
+
+  // Apply dark mode class to document
+  useEffect(() => {
+    if (darkMode) {
+      document.documentElement.classList.add('dark')
+    } else {
+      document.documentElement.classList.remove('dark')
+    }
+    localStorage.setItem('darkMode', JSON.stringify(darkMode))
+  }, [darkMode])
+
+  const toggleDarkMode = () => setDarkMode(!darkMode)
+
   // Vérifier le token au chargement
   const checkAuthToken = (): boolean => {
     try {
@@ -17256,7 +17288,7 @@ function App() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50">
+    <div className="min-h-screen bg-slate-50 dark:bg-slate-900 transition-colors duration-300">
       <Sidebar
         activeItem={currentPage}
         onItemClick={setCurrentPage}
@@ -17266,7 +17298,7 @@ function App() {
         onMobileClose={() => setMobileMenuOpen(false)}
       />
       <div className={`transition-all duration-300 ${sidebarCollapsed ? 'lg:ml-16' : 'lg:ml-[270px]'}`}>
-        <Header onMenuToggle={() => setMobileMenuOpen(true)} currentPage={currentPage} onLogout={handleLogout} onProfileClick={() => setCurrentPage('my-profile')} onNotificationsClick={() => setCurrentPage('notifications')} onNavigate={setCurrentPage} userSession={userSession} />
+        <Header onMenuToggle={() => setMobileMenuOpen(true)} currentPage={currentPage} onLogout={handleLogout} onProfileClick={() => setCurrentPage('my-profile')} onNotificationsClick={() => setCurrentPage('notifications')} onNavigate={setCurrentPage} userSession={userSession} darkMode={darkMode} toggleDarkMode={toggleDarkMode} />
         <main className="p-4 lg:p-8">
           {currentPage === 'dashboard' && <Dashboard userSession={userSession} onNavigate={setCurrentPage} />}
           {currentPage === 'my-profile' && <MyProfilePage userSession={userSession} onUpdateSession={setUserSession} />}
