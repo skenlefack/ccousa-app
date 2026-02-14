@@ -21,13 +21,9 @@ router.get('/', (req, res) => usersController.getAll(req, res));
 router.get('/stats', (req, res) => usersController.getStats(req, res));
 router.get('/roles', (req, res) => usersController.getRoles(req, res));
 router.get('/organizational-units', (req, res) => usersController.getOrganizationalUnits(req, res));
-router.get('/:id', (req, res) => usersController.getById(req, res));
-router.post('/', (req, res) => usersController.create(req, res));
-router.put('/:id', (req, res) => usersController.update(req, res));
-router.delete('/:id', (req, res) => usersController.delete(req, res));
-router.post('/:id/reset-password', (req, res) => usersController.resetPassword(req, res));
 
-// Routes groupes
+// Routes groupes (avant /:id pour éviter les conflits)
+router.get('/groups', (req, res) => usersController.getGroups(req, res));
 router.get('/groups/list', (req, res) => usersController.getGroups(req, res));
 router.get('/groups/:id', (req, res) => usersController.getGroupById(req, res));
 router.post('/groups', (req, res) => usersController.createGroup(req, res));
@@ -44,5 +40,12 @@ router.post('/roles/create', (req, res) => usersController.createRole(req, res))
 router.put('/roles/:id', (req, res) => usersController.updateRole(req, res));
 router.post('/roles/:roleId/permissions', (req, res) => usersController.assignPermission(req, res));
 router.delete('/roles/:roleId/permissions/:permissionId', (req, res) => usersController.revokePermission(req, res));
+
+// Routes utilisateurs par ID (à la fin pour éviter les conflits)
+router.get('/:id', (req, res) => usersController.getById(req, res));
+router.post('/', (req, res) => usersController.create(req, res));
+router.put('/:id', (req, res) => usersController.update(req, res));
+router.delete('/:id', (req, res) => usersController.delete(req, res));
+router.post('/:id/reset-password', (req, res) => usersController.resetPassword(req, res));
 
 export default router;

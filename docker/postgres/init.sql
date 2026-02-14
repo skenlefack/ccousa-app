@@ -843,6 +843,82 @@ INSERT INTO procedure_groups (code, name, description, color, icon) VALUES
 ('GRP_LAB', 'Procédures Laboratoire', 'Procédures pour analyses et laboratoire', '#8B5CF6', 'flask-conical')
 ON CONFLICT (code) DO NOTHING;
 
+-- =====================================================
+-- TABLES POUR LE SERVICE EVENTS (health_events)
+-- =====================================================
+
+-- Table health_events pour le service events
+CREATE TABLE IF NOT EXISTS health_events (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    code VARCHAR(50) NOT NULL UNIQUE,
+    title VARCHAR(300) NOT NULL,
+    description TEXT,
+    category_id UUID REFERENCES event_categories(id),
+    status VARCHAR(50) DEFAULT 'REPORTED',
+    severity VARCHAR(20) DEFAULT 'MEDIUM',
+    location VARCHAR(300),
+    latitude DECIMAL(10, 8),
+    longitude DECIMAL(11, 8),
+    organizational_unit_id UUID REFERENCES organizational_units(id),
+    reported_by_id UUID REFERENCES users(id),
+    assigned_to_id UUID REFERENCES users(id),
+    reported_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    confirmed_at TIMESTAMP,
+    resolved_at TIMESTAMP,
+    closed_at TIMESTAMP,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Table event_attachments pour le service events
+CREATE TABLE IF NOT EXISTS event_attachments (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    event_id UUID REFERENCES health_events(id) ON DELETE CASCADE,
+    file_name VARCHAR(255) NOT NULL,
+    original_name VARCHAR(255) NOT NULL,
+    file_size BIGINT NOT NULL,
+    mime_type VARCHAR(100),
+    url TEXT NOT NULL,
+    thumbnail_url TEXT,
+    document_type_id UUID REFERENCES document_types(id),
+    uploaded_by_id UUID REFERENCES users(id),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Table event_timeline pour le service events
+CREATE TABLE IF NOT EXISTS event_timeline (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    event_id UUID NOT NULL REFERENCES health_events(id) ON DELETE CASCADE,
+    action VARCHAR(100) NOT NULL,
+    description TEXT NOT NULL,
+    user_id UUID REFERENCES users(id),
+    metadata JSONB,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Modifier event_comments pour supporter health_events
+ALTER TABLE event_comments
+    DROP CONSTRAINT IF EXISTS event_comments_event_id_fkey;
+ALTER TABLE event_comments
+    ADD COLUMN IF NOT EXISTS event_id UUID;
+
+-- Modifier event_tasks pour le service events
+ALTER TABLE event_tasks
+    ADD COLUMN IF NOT EXISTS title VARCHAR(200),
+    ADD COLUMN IF NOT EXISTS priority VARCHAR(20) DEFAULT 'MEDIUM',
+    ADD COLUMN IF NOT EXISTS completed_at TIMESTAMP,
+    ADD COLUMN IF NOT EXISTS created_by_id UUID REFERENCES users(id),
+    ADD COLUMN IF NOT EXISTS assigned_to_id UUID REFERENCES users(id);
+
+-- Index pour health_events
+CREATE INDEX IF NOT EXISTS idx_health_events_code ON health_events(code);
+CREATE INDEX IF NOT EXISTS idx_health_events_status ON health_events(status);
+CREATE INDEX IF NOT EXISTS idx_health_events_severity ON health_events(severity);
+CREATE INDEX IF NOT EXISTS idx_health_events_category ON health_events(category_id);
+CREATE INDEX IF NOT EXISTS idx_health_events_reported_at ON health_events(reported_at);
+CREATE INDEX IF NOT EXISTS idx_event_timeline_event ON event_timeline(event_id);
+CREATE INDEX IF NOT EXISTS idx_event_attachments_event ON event_attachments(event_id);
+
 -- Message de fin
 DO $$
 BEGIN
